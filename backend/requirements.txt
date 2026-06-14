@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+langchain-groq
+langgraph
+feedparser
+newspaper3k
+newsapi-python
+pydantic
+pydantic-settings
+python-dotenv
+httpx
