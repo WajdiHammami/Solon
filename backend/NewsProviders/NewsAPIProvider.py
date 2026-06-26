@@ -1,15 +1,13 @@
 from backend.NewsProviders.NewsProvider_base import NewsProvider
 from backend.models import Article
 from newsapi import NewsApiClient
-from newspaper import Article as NewspaperArticle 
+from newspaper import Article as NewspaperArticle
 
 class NewsAPIProvider(NewsProvider):
     def __init__(self, api_key: str):
-       self.newsapi = NewsApiClient(api_key=api_key)
-     
-    
-    def fetch_articles(self, query: str | list[str], sources: list[str] = [], language: str = "en", sort_by:str = "relevancy", page_size: int=5, page: int=1) -> list[Article]:
-        # Implement the logic to fetch articles from NewsAPI
+        self.newsapi = NewsApiClient(api_key=api_key)
+
+    def fetch_articles(self, query: str | list[str], sources: list[str] = [], language: str = "en", sort_by: str = "relevancy", page_size: int = 5, page: int = 1) -> list[Article]:
         if isinstance(query, str):
             query = [query]
         articles = []
@@ -20,11 +18,13 @@ class NewsAPIProvider(NewsProvider):
             if response["status"] == "ok":
                 for article in response["articles"]:
                     articles.append(Article(
+                        id=hash(article["url"]),
                         title=article["title"],
                         url=article["url"],
                         source_name=article["source"]["name"],
                         published_at=article["publishedAt"])
-                        )
+                    )
+                
             else:
                 print(f"Error fetching articles: {response['message']}")
         return articles

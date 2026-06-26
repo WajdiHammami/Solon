@@ -5,9 +5,11 @@ from pydantic import BaseModel, ValidationError
 
 
 class Article(BaseModel):
+    id: int
     title: str
     url: str
     source_name: str
+    tag: Optional[str] = None
     published_at: datetime
     content: Optional[str] = None
     summary: Optional[str] = None
@@ -23,3 +25,13 @@ class Profile(BaseModel):
     sources: list[Source]
     topics: list[str]
     newsapi_enabled: Optional[bool]
+
+
+
+class SummarizeRequest(BaseModel):
+    articles: list[Article]
+
+class SummarizeResponse(BaseModel):
+    summaries: list[str]
+    synthesis: Optional[str] = None
+    tags: Optional[dict[int, tuple[str, str]]] = None  # article_id -> (tag, explanation)

@@ -1,6 +1,6 @@
-from langgraph.graph.state import CompiledStateGraph, Runnable
+from langgraph.graph.state import CompiledStateGraph, Runnable, RunnableConfig
 from langgraph.types import Send
-from backend.Summarization.pipelineState import PipelineState, SummarizeState
+from backend.Summarization.pipelineState import PipelineState, SummarizeState, BiasDetectionState
 from langgraph.graph import (
     StateGraph,
      START,
@@ -10,32 +10,70 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from backend.models import Article
 
 
-
 class SummarizationPipeline:
     def __init__(self, llm):
         self.llm = llm
-        self.graph = self._build_graph()
+        self.graph_batch_summarization = self._build_graph_batch_summarization()
+        self.graph_singular_summarization = self._build_graph_singular_summarization()
     
-    def _build_graph(self) -> CompiledStateGraph:
+
+    def _build_graph_singular_summarization(self) -> CompiledStateGraph:
+        graph = StateGraph(SummarizeState)
+        graph.add("summarize_article", self._summarize_article_node)
+        graph.add("bias_detection", self._bias_detection_node)
+
+        graph.add_edge(START, "summarize_article")
+        graph.add_conditional_edges("summarize_article", self._bias_detection_switch, ["bias_detection", END])
+
+        return graph.compile()
+
+
+    def _build_graph_batch_summarization(self) -> CompiledStateGraph:
         graph = StateGraph(PipelineState)
 
         graph.add_node("summarize_article", self._summarize_article_node)
         graph.add_node("synthesize", self._synthesize_node)
+        graph.add_node("bias_detection", self._bias_detection_node)
+
 
         graph.add_conditional_edges(START,
                                     self._fan_out,
-                                    ["summarize_article"])
+                                    ["summarize_article", "bias_detection"])
 
         graph.add_edge("summarize_article", "synthesize")
+        graph.add_edge("bias_detection", "synthesize")
         graph.add_edge("synthesize", END)
 
         return graph.compile()
 
 
     def _fan_out(self, state: PipelineState) -> str:
-        return [
-            Send("summarize_article", {"article": article}) for article in state['articles']
+        sends = []
+        for article in state['articles']:
+            sends.append(Send("summarize_article", SummarizeState(article=article)))
+            sends.append(Send("bias_detection", BiasDetectionState(article=article)))
+        return sends
+
+    def _bias_detection_node(self, state: BiasDetectionState) -> Runnable:
+        prompt = f"""You are a news analyst.
+        You are given an article. Detect any potential bias in the article's content, framing, or language.
+        Provide a brief explanation of any bias you identify.\n
+        Start your response with "Bias Detected:" if you find bias, or "No Bias Detected." if you do not find any bias. Bias should be max 2 words set inside [] brackets. Explanation should be max 2 sentences.
+        """
+
+
+        messages = [
+            SystemMessage(content=prompt),
+            HumanMessage(content=f"Article: {state['article'].title}\nSource: {state['article'].source_name}\nContent: {state['article'].content}\nURL={state['article'].url}")
         ]
+        response = self.llm.invoke(messages)
+        
+        #extracting bias from the response: take tag after Bias detected it should be inside [] brackets
+
+        bias = response.content.split("Bias Detected:")[-1].split("[")[-1].split("]")[0].strip() if "Bias Detected:" in response.content else "No Bias"
+        explanation = response.content.split("Bias Detected:")[-1].split("]")[-1].strip() if "Bias Detected:" in response.content else "No bias detected."
+        return {"tags": {state['article'].id: (bias, explanation)}}
+        
 
     def _synthesize_node(self, state: PipelineState) -> Runnable:
         prompt = f"""You are a news analyst.
@@ -75,5 +113,14 @@ class SummarizationPipeline:
         response = self.llm.invoke(messages)
         return {"summaries": [response.content]}
 
-    def run(self, articles: list[Article]) -> PipelineState:
-        return self.graph.invoke({"articles": articles, "summaries": [], "synthesis": ""})
+    def _bias_detection_swtich(self, state: PipelineState, config: RunnableConfig):
+        if config["configurable"].get("enable_bias", True):
+           return "detect_bias"
+        else:
+            return END 
+
+    def run_batch_summarization(self, articles: list[Article]) -> PipelineState:
+        return self.graph_batch_summarization.invoke({"articles": articles, "summaries": [], "synthesis": ""})
+    
+    def run_singular_summarization(self, article: Article, config: dict) -> Article:
+        return self.graph_singular_summarization.invoke({"Article": article}, config={"configurable": config})
