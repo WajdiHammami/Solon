@@ -16,9 +16,9 @@ class NewsAPIProvider(NewsProvider):
             responses.append(self.newsapi.get_everything(q=q, sources=",".join(sources), language=language, sort_by=sort_by, page_size=page_size, page=page))
         for response in responses:
             if response["status"] == "ok":
-                for article in response["articles"]:
+                for i, article in enumerate(response["articles"]):
                     articles.append(Article(
-                        id=hash(article["url"]),
+                        id=i,
                         title=article["title"],
                         url=article["url"],
                         source_name=article["source"]["name"],
@@ -29,17 +29,14 @@ class NewsAPIProvider(NewsProvider):
                 print(f"Error fetching articles: {response['message']}")
         return articles
 
-    def extract_content(self, article: Article, return_content: bool = True) -> str:
+    def extract_content(self, url:str, return_content: bool = True) -> str:
         try:
-            if article.content:
-                return article.content
-            else:
-                newspaper_article = NewspaperArticle(article.url)
-                newspaper_article.download()
-                newspaper_article.parse()
-                article.content = newspaper_article.text
-                if return_content:
-                    return newspaper_article.text
+            
+            newspaper_article = NewspaperArticle(url)
+            newspaper_article.download()
+            newspaper_article.parse()
+            if return_content:
+                return newspaper_article.text
         except Exception as e:
-            print(f"Error extracting content from {article.url}: {e}")
+            print(f"Error extracting content from {url}: {e}")
             return ""

@@ -21,7 +21,7 @@ def health_check():
 
 
 @app.get("/feed")
-def get_feed(topic: str = None, page_size=10, page=1) -> list[Article]:
+def get_feed(topic: str = None, page_size=40, page=1) -> list[Article]:
     articles = []
     for provider in providers:
         articles += provider.fetch_articles(topic or "Top headlines", page_size=10)
@@ -30,7 +30,7 @@ def get_feed(topic: str = None, page_size=10, page=1) -> list[Article]:
 
 @app.post("/summarize")
 def summarize(request: SummarizeRequest) -> SummarizeResponse | Article:
-    if len(SummarizeRequest["Articles"]) > 1:
+    if len(request.articles) > 1:
         json_response = summarizer.run_batch_summarization(request.articles)
         return SummarizeResponse(**{
             "summaries": json_response["summaries"],
@@ -39,5 +39,12 @@ def summarize(request: SummarizeRequest) -> SummarizeResponse | Article:
         })
     else:
         json_response = summarizer.run_singular_summarization(request.articles[0], config={"enable_bias": True})
-        request.articles[0] = json_response["Article"]
-        return Article
+        return  request.articles[0] 
+
+
+@app.get("/article/content")
+def get_content(url: str) -> str:
+
+    content = providers[0].extract_content(url)
+    print(content)
+    return content

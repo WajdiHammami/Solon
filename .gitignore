@@ -6,3 +6,4 @@ reports/
 client/build/
 .vscode/
 build/
+.claude/

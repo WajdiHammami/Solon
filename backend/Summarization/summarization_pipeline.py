@@ -19,8 +19,8 @@ class SummarizationPipeline:
 
     def _build_graph_singular_summarization(self) -> CompiledStateGraph:
         graph = StateGraph(SummarizeState)
-        graph.add("summarize_article", self._summarize_article_node)
-        graph.add("bias_detection", self._bias_detection_node)
+        graph.add_node("summarize_article", self._summarize_singular_article_node)
+        graph.add_node("bias_detection", self._bias_detection_singular_node)
 
         graph.add_edge(START, "summarize_article")
         graph.add_conditional_edges("summarize_article", self._bias_detection_switch, ["bias_detection", END])
@@ -113,14 +113,55 @@ class SummarizationPipeline:
         response = self.llm.invoke(messages)
         return {"summaries": [response.content]}
 
-    def _bias_detection_swtich(self, state: PipelineState, config: RunnableConfig):
+    def _bias_detection_switch(self, state: PipelineState, config: RunnableConfig):
         if config["configurable"].get("enable_bias", True):
-           return "detect_bias"
+           return "bias_detection"
         else:
             return END 
+
+    def _summarize_singular_article_node(self, state: SummarizeState) -> Runnable:
+        article = state['article']
+        messages = [
+            SystemMessage(content="You are a news analyst."),
+            HumanMessage(content=f"""Article: 
+                         Title: {article.title}
+                         Source: {article.source_name}
+                         Content: {article.content})
+                Summarize this article in 3-5 sentences.
+                Preserve key facts, claims, and figures.
+                Stay neutral — do not add opinions.""")      
+        ]
+        response = self.llm.invoke(messages)
+        article.summary = response.content
+        return {"article": article}
+
+    def _bias_detection_singular_node(self, state: SummarizeState) -> Runnable:
+        prompt = f"""You are a news analyst.
+        You are given an article. Detect any potential bias in the article's content, framing, or language.
+        Provide a brief explanation of any bias you identify.\n
+        Start your response with "Bias Detected:" if you find bias, or "No Bias Detected." if you do not find any bias. Bias should be max 2 words set inside [] brackets. Explanation should be max 2 sentences.
+        """
+
+        article = state['article']
+
+        messages = [
+            SystemMessage(content=prompt),
+            HumanMessage(content=f"Article: {state['article'].title}\nSource: {state['article'].source_name}\nContent: {state['article'].content}\nURL={state['article'].url}")
+        ]
+        response = self.llm.invoke(messages)
+        
+        #extracting bias from the response: take tag after Bias detected it should be inside [] brackets
+
+        bias = response.content.split("Bias Detected:")[-1].split("[")[-1].split("]")[0].strip() if "Bias Detected:" in response.content else "No Bias"
+        explanation = response.content.split("Bias Detected:")[-1].split("]")[-1].strip() if "Bias Detected:" in response.content else "No bias detected."
+
+        article.tag = bias
+
+        return {"article": article}
+      
 
     def run_batch_summarization(self, articles: list[Article]) -> PipelineState:
         return self.graph_batch_summarization.invoke({"articles": articles, "summaries": [], "synthesis": ""})
     
     def run_singular_summarization(self, article: Article, config: dict) -> Article:
-        return self.graph_singular_summarization.invoke({"Article": article}, config={"configurable": config})
+        return self.graph_singular_summarization.invoke({"article": article}, config={"configurable": config})
