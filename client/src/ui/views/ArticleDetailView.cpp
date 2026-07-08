@@ -1,0 +1,158 @@
+
+
+#include "ArticleDetailView.h"
+#include <QLabel>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QPushButton>
+#include "network/ApiClient.h"
+#include <QDialog>
+#include <QTextEdit>
+
+ArticleDetailView::ArticleDetailView(QWidget* parent)
+    : QWidget(parent),
+      m_title(new QLabel(this)),
+      m_source(new QLabel(this)),
+      m_date(new QLabel(this)),
+      m_summary(new QLabel(this)),
+      m_biasTag(new QLabel(this)),
+      m_readButton(new QPushButton("Read Full Article", this)),
+      m_summarizeButton(new QPushButton("Summarize", this)) {
+
+
+    setFixedWidth(420);
+
+    m_title->setObjectName("title");
+    m_title->setWordWrap(true);
+    m_source->setObjectName("source");
+    m_date->setObjectName("date");
+    m_biasTag->setObjectName("biasTag");
+
+    m_biasTag->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    m_summary->setWordWrap(true);
+    QVBoxLayout* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(16, 16, 16, 16);
+    layout->setSpacing(4);
+
+    // compact header block
+    QVBoxLayout* headerLayout = new QVBoxLayout();
+    headerLayout->setSpacing(2);
+    headerLayout->addWidget(m_title);
+
+    QHBoxLayout* infoLayout = new QHBoxLayout();
+    infoLayout->setSpacing(8);
+    infoLayout->addWidget(m_source);
+    infoLayout->addWidget(m_date);
+    infoLayout->addWidget(m_biasTag);
+    infoLayout->addStretch();
+    headerLayout->addLayout(infoLayout);
+
+    layout->addLayout(headerLayout);
+    layout->addSpacing(8);
+    layout->addWidget(m_summary);
+    layout->addStretch();
+
+    QHBoxLayout* buttonsLayout = new QHBoxLayout();
+    buttonsLayout->addWidget(m_readButton);
+    buttonsLayout->addWidget(m_summarizeButton);
+    layout->addLayout(buttonsLayout);
+    setLayout(layout);
+
+    if(m_article.summary.isEmpty()){
+        m_summarizeButton->setDisabled(false);
+    }else{
+        m_summarizeButton->setDisabled(true);
+    }
+
+  
+    
+    // Connections:
+    connect(m_summarizeButton, &QPushButton::clicked, this, [this](){
+        emit summarizeRequest(m_article); 
+        m_summarizeButton->setDisabled(true);
+    });
+
+    connect(m_readButton, &QPushButton::clicked, this, [this](){
+        if(m_article.content.isEmpty()){
+            emit contentRequest(m_article.url);
+        }else{
+            showContent(m_article.content);
+        }
+
+   });
+}
+
+
+void ArticleDetailView::setArticle(const Article& article) {
+    m_title->setText(article.title);
+    m_source->setText(article.source_name);
+    m_date->setText(article.published_at);
+    if (article.summary.isEmpty()) {
+        m_summary->setText("No summary available.");
+    } else {
+        m_summary->setText(article.summary);
+    }
+    if (article.tag.isEmpty()) {
+        m_biasTag->setText("No bias tag available.");
+    } else {
+        m_biasTag->setText(article.tag);
+    }
+    m_article = article;
+    
+    if(m_article.summary.isEmpty()){
+        m_summarizeButton->setDisabled(false);
+    }else{
+        m_summarizeButton->setDisabled(true);
+    }
+
+}
+
+
+Article *ArticleDetailView::getArticle(){
+    return &m_article;
+}
+
+
+void ArticleDetailView::showContent(const QString& content){
+    QDialog* dialog = new QDialog(this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setWindowTitle(m_article.title);
+    dialog->resize(750, 620);
+
+    QLabel* title = new QLabel(m_article.title, dialog);
+    title->setWordWrap(true);
+    title->setStyleSheet("font-size: 18px; font-weight: bold; color: #cdd6f4; padding: 0 0 8px 0;");
+
+    QLabel* meta = new QLabel(m_article.source_name + "  •  " + m_article.published_at, dialog);
+    meta->setStyleSheet("font-size: 12px; color: #6c7086;");
+
+    QLabel* urlLabel = new QLabel("<a href=\"" + m_article.url + "\" style=\"color: #89dceb; text-decoration: none;\">" + m_article.url + "</a>", dialog);
+    urlLabel->setWordWrap(true);
+    urlLabel->setOpenExternalLinks(true);
+    urlLabel->setStyleSheet("font-size: 12px;");
+
+    QTextEdit* textEdit = new QTextEdit(dialog);
+    textEdit->setReadOnly(true);
+    textEdit->setPlainText(content);
+    textEdit->setStyleSheet(R"(
+        QTextEdit {
+            font-family: Georgia, serif;
+            font-size: 15px;
+            background-color: #1e1e2e;
+            color: #cdd6f4;
+            border: none;
+            padding: 8px;
+        }
+    )");
+
+    QVBoxLayout* layout = new QVBoxLayout(dialog);
+    layout->setContentsMargins(24, 20, 24, 20);
+    layout->setSpacing(4);
+    layout->addWidget(title);
+    layout->addWidget(meta);
+    layout->addWidget(urlLabel);
+    layout->addSpacing(12);
+    layout->addWidget(textEdit);
+
+    dialog->show();
+}
