@@ -4,6 +4,8 @@
 
 Built with a **C++/Qt6** desktop client and a **Python/FastAPI** backend driving a **LangGraph** summarization pipeline.
 
+> 🚧 **Status: work in progress.** The core aggregation, summarization, bias-detection, and synthesis flow works end to end. The project is under active development — see the [roadmap](#roadmap) for what's next.
+
 > The name is borrowed from Solon of Athens, the lawmaker known for his pursuit of balanced judgment.
 
 ---
@@ -165,6 +167,14 @@ solon/
 
 ---
 
+## License
+
+Released under the [MIT License](LICENSE).
+
+---
+
 ## Author
 
 Built by **Wajdi** as a full-stack portfolio project spanning native desktop (C++/Qt6), API design (FastAPI), and LLM orchestration (LangGraph).
+
+This is an actively evolving project rather than a finished product — new features are being added over time, and feedback is welcome.
