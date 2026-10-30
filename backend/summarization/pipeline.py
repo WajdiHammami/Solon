@@ -1,6 +1,6 @@
 from langgraph.graph.state import CompiledStateGraph, Runnable, RunnableConfig
 from langgraph.types import Send
-from backend.Summarization.pipelineState import PipelineState, SummarizeState, BiasDetectionState
+from backend.summarization.state import PipelineState, SummarizeState, BiasDetectionState
 from langgraph.graph import (
     StateGraph,
      START,

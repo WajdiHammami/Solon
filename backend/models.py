@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 
 class Article(BaseModel):
@@ -24,7 +24,7 @@ class Source(BaseModel):  # a news/information/articles source
 class Profile(BaseModel):
     sources: list[Source]
     topics: list[str]
-    newsapi_enabled: Optional[bool]
+    newsapi_enabled: Optional[bool] = None
 
 
 

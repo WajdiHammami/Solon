@@ -1,6 +1,6 @@
 from typing import TypedDict, Annotated
 import operator
-from backend.models import Article
+from backend.models import Article  # noqa: F401  (used in type annotations)
 
 class PipelineState(TypedDict):
     articles: list[Article]

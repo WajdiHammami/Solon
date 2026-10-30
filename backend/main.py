@@ -1,50 +1,80 @@
-from fastapi import FastAPI
-from backend.models import Article
-from backend.models import SummarizeRequest, SummarizeResponse
-from backend.Summarization.pipelineState import PipelineState, SummarizeState, BiasDetectionState
-from backend.Summarization.summarization_pipeline import SummarizationPipeline
-from backend.NewsProviders.NewsAPIProvider import NewsAPIProvider
-from langchain_groq import ChatGroq
-import backend.config
-import os
+"""FastAPI application exposing the Solon news aggregation and analysis API."""
 
-app = FastAPI()
-providers = []
-backend.config.set_env_variables()
-providers.append(NewsAPIProvider(api_key=os.getenv("NEWSAPI_KEY")))
-LLM = ChatGroq(model="llama-3.3-70b-versatile", api_key=os.getenv("GROQ_API_KEY"))
-summarizer = SummarizationPipeline(llm=LLM)
+import logging
+from functools import lru_cache
+
+from fastapi import Depends, FastAPI
+from langchain_groq import ChatGroq
+
+from backend.config import get_settings
+from backend.models import Article, SummarizeRequest, SummarizeResponse
+from backend.news_providers.newsapi_provider import NewsAPIProvider
+from backend.summarization.pipeline import SummarizationPipeline
+
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="Solon", version="0.1.0")
+
+
+@lru_cache
+def get_providers() -> list[NewsAPIProvider]:
+    """Return the configured news providers (built once, then cached)."""
+    settings = get_settings()
+    return [NewsAPIProvider(api_key=settings.newsapi_key)]
+
+
+@lru_cache
+def get_summarizer() -> SummarizationPipeline:
+    """Return the summarization pipeline (built once, then cached)."""
+    settings = get_settings()
+    llm = ChatGroq(model=settings.groq_model, api_key=settings.groq_api_key)
+    return SummarizationPipeline(llm=llm)
+
 
 @app.get("/health")
-def health_check():
+def health_check() -> dict[str, str]:
     return {"status": "healthy"}
 
 
 @app.get("/feed")
-def get_feed(topic: str = None, page_size=40, page=1) -> list[Article]:
-    articles = []
+def get_feed(
+    topic: str | None = None,
+    page_size: int = 40,
+    page: int = 1,
+    providers: list[NewsAPIProvider] = Depends(get_providers),
+) -> list[Article]:
+    articles: list[Article] = []
     for provider in providers:
-        articles += provider.fetch_articles(topic or "Top headlines", page_size=10)
+        articles += provider.fetch_articles(
+            topic or "Top headlines", page_size=page_size, page=page
+        )
     return articles
 
 
 @app.post("/summarize")
-def summarize(request: SummarizeRequest) -> SummarizeResponse | Article:
+def summarize(
+    request: SummarizeRequest,
+    summarizer: SummarizationPipeline = Depends(get_summarizer),
+) -> SummarizeResponse | Article:
     if len(request.articles) > 1:
-        json_response = summarizer.run_batch_summarization(request.articles)
-        return SummarizeResponse(**{
-            "summaries": json_response["summaries"],
-            "synthesis": json_response["synthesis"],
-            "tags": json_response["tags"]
-        })
-    else:
-        json_response = summarizer.run_singular_summarization(request.articles[0], config={"enable_bias": True})
-        return  request.articles[0] 
+        result = summarizer.run_batch_summarization(request.articles)
+        return SummarizeResponse(
+            summaries=result["summaries"],
+            synthesis=result["synthesis"],
+            tags=result["tags"],
+        )
+
+    result = summarizer.run_singular_summarization(
+        request.articles[0], config={"enable_bias": True}
+    )
+    return result["article"]
 
 
 @app.get("/article/content")
-def get_content(url: str) -> str:
-
+def get_content(
+    url: str,
+    providers: list[NewsAPIProvider] = Depends(get_providers),
+) -> str:
     content = providers[0].extract_content(url)
-    print(content)
+    logger.info("Extracted %d characters from %s", len(content), url)
     return content
