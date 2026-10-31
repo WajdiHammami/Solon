@@ -10,6 +10,9 @@
 #include "ui/views/ArticleDetailView.h"
 #include "ui/views/SynthesisView.h"
 
+namespace {
+constexpr int kFeedPageSize = 5;  // matches the backend's /feed default
+}
 
 
 MainWindow::MainWindow(QWidget* parent): QMainWindow(parent), m_apiClient(new ApiClient(this)), m_articleListModel(new ArticleListModel(this)){
@@ -31,6 +34,8 @@ void MainWindow::setupUI(){
     QWidget* centralWidget = new QWidget(this);
 
     m_searchBar = new QLineEdit(centralWidget);
+    m_searchBar->setPlaceholderText("Search a topic — leave empty for top headlines");
+    m_searchBar->setClearButtonEnabled(true);
     m_searchButton = new QPushButton("Search", centralWidget);
     m_batchSummarize = new QPushButton("Summarize All", centralWidget);
     m_batchSummarize->setEnabled(false);  // until there are articles
@@ -76,8 +81,9 @@ void MainWindow::setupUI(){
 void MainWindow::setupConnections(){
     // Feed
     connect(m_searchButton, &QPushButton::clicked, this, [this](){
-        m_apiClient->fetchFeed(m_searchBar->text(), 5, 1);
-        beginRequest("Loading...");
+        const QString topic = m_searchBar->text().trimmed();
+        m_apiClient->fetchFeed(topic, kFeedPageSize, 1);
+        beginRequest(topic.isEmpty() ? "Loading top headlines..." : QString("Searching \"%1\"...").arg(topic));
         m_synthesisView->clear();
     });
     connect(m_searchBar, &QLineEdit::returnPressed, m_searchButton, &QPushButton::click);

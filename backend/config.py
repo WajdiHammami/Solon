@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     """Runtime settings, populated from environment variables / ``.env``."""
 
     newsapi_key: str = ""
+    news_language: str = "en"
+    news_country: str = ""  # ISO 3166-1 code for top headlines; empty = any
     llm_provider: Literal["groq", "azure"] = "groq"
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-120b"

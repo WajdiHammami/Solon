@@ -35,6 +35,8 @@ cp .env.example .env
 | `LOG_LEVEL` | no | default `INFO` |
 | `LOG_FILE` | no | default `logs/solon.log` (relative to `backend/`; empty disables) |
 | `LOG_MAX_BYTES` / `LOG_BACKUP_COUNT` | no | Log rotation (default 10 MB × 5) |
+| `NEWS_LANGUAGE` | no | Language for searches and headlines (default `en`) |
+| `NEWS_COUNTRY` | no | Country for top headlines, e.g. `us` (default: any) |
 | `PROFILE_PATH` | no | Path to the profile JSON (default `profiles/default.json`) |
 
 ## Running
@@ -50,7 +52,7 @@ uvicorn backend.main:app --reload
 | Method | Path | Description |
 |---|---|---|
 | GET | `/health` | Liveness probe |
-| GET | `/feed` | Fetch articles (`topic`, `page_size`, `page`) |
+| GET | `/feed` | Articles for `topic` (top headlines when empty); `page_size` 1–100, default 5; `page` ≥ 1 |
 | POST | `/analyze` | Analyze articles + synthesize → `BatchAnalysis` |
 | POST | `/analyze/article` | Summarize and bias-tag one article → `ArticleResult` |
 | GET | `/article/content` | Scrape full article text for a `url` |
@@ -61,7 +63,12 @@ with a `retryable` flag), `skipped` (ids dropped by the token budget) and
 `estimated_tokens`. A failing task never fails the request.
 
 Summaries and bias tags are cached by article URL, so repeat requests only
-pay for the synthesis.
+pay for the synthesis. Analysis fields sent by the client (`summary`, `tag`)
+are ignored: only server-side results are reused or cached.
+
+Every response carries an `X-Request-ID` header, and every log line for that
+request is tagged with it (`[<id>]`). Callers may send their own id (up to 64
+characters from `A-Z a-z 0-9 . _ -`); anything else is replaced.
 
 ## Project layout
 
@@ -75,6 +82,7 @@ backend/
 │   ├── base.py              # NewsProvider abstract interface
 │   └── newsapi_provider.py  # NewsAPI implementation
 ├── logging_config.py        # Console + rotating file logging
+├── request_context.py       # Request id for log correlation
 ├── llm/                     # Provider-agnostic LLM layer
 │   ├── base.py              # LLMClient interface
 │   ├── models.py            # GenerationRequest / GenerationResponse

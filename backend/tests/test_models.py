@@ -87,11 +87,3 @@ class TestAnalysisSchemas:
         assert ArticleAnalysis(
             summary="s", bias=BiasAssessment(label="None")
         ).is_complete
-
-    def test_merged_with_fills_only_missing_fields(self):
-        mine = ArticleAnalysis(summary="mine")
-        other = ArticleAnalysis(summary="other", bias=BiasAssessment(label="X"))
-        merged = mine.merged_with(other)
-        assert merged.summary == "mine"
-        assert merged.bias.label == "X"
-        assert mine.merged_with(None) is mine

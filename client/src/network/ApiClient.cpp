@@ -7,12 +7,23 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QNetworkRequest>
+#include <QUuid>
 
 namespace {
 // Analysis makes several LLM calls per article; give it room.
 constexpr int kFeedTimeoutMs = 30'000;
 constexpr int kAnalyzeTimeoutMs = 180'000;
 constexpr int kContentTimeoutMs = 60'000;
+const QByteArray kRequestIdHeader = "X-Request-ID";
+
+// Every request carries an id the backend stamps on its log lines, so an
+// error shown here can be found in backend/logs/solon.log.
+QNetworkRequest makeRequest(const QUrl& url, int timeoutMs){
+    QNetworkRequest request(url);
+    request.setTransferTimeout(timeoutMs);
+    request.setRawHeader(kRequestIdHeader, QUuid::createUuid().toString(QUuid::Id128).left(12).toLatin1());
+    return request;
+}
 }
 
 ApiClient::ApiClient(QObject* parent): QObject(parent), m_network(new QNetworkAccessManager(this)), m_baseUrl("http://localhost:8000"){}
@@ -22,14 +33,13 @@ void ApiClient::fetchFeed(const QString& topic, int pageSize, int page){
     QUrlQuery query;
 
     url.setPath("/feed");
-    query.addQueryItem("topic", topic);
+    // No topic means top headlines (the backend treats missing/blank alike).
+    if(!topic.trimmed().isEmpty()) query.addQueryItem("topic", topic.trimmed());
     query.addQueryItem("page", QString::number(page));
     query.addQueryItem("page_size", QString::number(pageSize));
     url.setQuery(query);
 
-    QNetworkRequest request(url);
-    request.setTransferTimeout(kFeedTimeoutMs);
-    handleReply(m_network->get(request), Request::Feed, [this](const QByteArray& body){
+    handleReply(m_network->get(makeRequest(url, kFeedTimeoutMs)), Request::Feed, [this](const QByteArray& body){
         QJsonDocument doc;
         if(!parseJson(Request::Feed, body, doc)) return;
         if(!doc.isArray()){
@@ -94,9 +104,7 @@ void ApiClient::contentRequest(const QString& url){
     query.addQueryItem("url", url);
     requestUrl.setQuery(query);
 
-    QNetworkRequest request(requestUrl);
-    request.setTransferTimeout(kContentTimeoutMs);
-    handleReply(m_network->get(request), Request::Content, [this, url](const QByteArray& body){
+    handleReply(m_network->get(makeRequest(requestUrl, kContentTimeoutMs)), Request::Content, [this, url](const QByteArray& body){
         // The endpoint returns a bare JSON string; wrap it so QJsonDocument can parse it.
         QJsonDocument doc;
         if(!parseJson(Request::Content, QByteArray("[") + body + QByteArray("]"), doc)) return;
@@ -108,9 +116,8 @@ void ApiClient::contentRequest(const QString& url){
 QNetworkReply* ApiClient::postJson(const QString& path, const QJsonObject& body, int timeoutMs){
     QUrl url(m_baseUrl);
     url.setPath(path);
-    QNetworkRequest request(url);
+    QNetworkRequest request = makeRequest(url, timeoutMs);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    request.setTransferTimeout(timeoutMs);
     return m_network->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
 }
 
@@ -121,8 +128,9 @@ void ApiClient::handleReply(QNetworkReply* reply, Request request, std::function
         if(reply->error() == QNetworkReply::NoError){
             onSuccess(body);
         }else{
-            qWarning() << "Request failed:" << reply->url().path() << reply->errorString();
-            emit errorOccurred(request, errorMessage(reply, body));
+            const QString requestId = QString::fromLatin1(reply->request().rawHeader(kRequestIdHeader));
+            qWarning() << "Request failed:" << reply->url().path() << "id" << requestId << reply->errorString();
+            emit errorOccurred(request, errorMessage(reply, body) + QString(" [request %1]").arg(requestId));
         }
         reply->deleteLater();
     });
@@ -165,10 +173,9 @@ QJsonObject ApiClient::toJson(const Article& article){
     obj["title"] = article.title;
     obj["url"] = article.url;
     obj["source_name"] = article.source_name;
-    obj["tag"] = article.tag;
     obj["published_at"] = article.published_at;
     obj["content"] = article.content;
-    obj["summary"] = article.summary;
+    // summary/tag are not sent: the backend never trusts client-side analysis.
     return obj;
 }
 

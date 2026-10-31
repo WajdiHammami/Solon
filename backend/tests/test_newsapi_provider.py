@@ -31,14 +31,18 @@ def _ok_response(*titles, description=None, content=None):
 
 
 class FakeNewsApiClient:
-    """Captures calls and returns scripted ``get_everything`` responses."""
+    """Captures calls and returns scripted responses for either endpoint."""
 
     def __init__(self, responses):
         self._responses = list(responses)
         self.calls = []
 
     def get_everything(self, **kwargs):
-        self.calls.append(kwargs)
+        self.calls.append({"endpoint": "everything", **kwargs})
+        return self._responses.pop(0)
+
+    def get_top_headlines(self, **kwargs):
+        self.calls.append({"endpoint": "top_headlines", **kwargs})
         return self._responses.pop(0)
 
 
@@ -89,6 +93,42 @@ class TestFetchArticles:
     def test_content_is_none_when_snippet_absent(self, provider):
         provider.newsapi = FakeNewsApiClient([_ok_response("A")])
         assert provider.fetch_articles("tech")[0].content is None
+
+
+    def test_uses_provider_language(self):
+        provider = NewsAPIProvider(api_key="dummy", language="fr")
+        client = FakeNewsApiClient([_ok_response("A")])
+        provider.newsapi = client
+        provider.fetch_articles("tech")
+        assert client.calls[0]["language"] == "fr"
+
+    def test_provider_specific_options_are_keyword_only(self, provider):
+        with pytest.raises(TypeError):
+            provider.fetch_articles("tech", 5, 1, ["bbc-news"])
+
+
+class TestFetchTopHeadlines:
+    def test_calls_headlines_endpoint_with_paging(self, provider):
+        client = FakeNewsApiClient([_ok_response("A", "B")])
+        provider.newsapi = client
+        articles = provider.fetch_top_headlines(page_size=2, page=3)
+        assert [a.id for a in articles] == [0, 1]
+        call = client.calls[0]
+        assert call["endpoint"] == "top_headlines"
+        assert (call["page_size"], call["page"]) == (2, 3)
+        assert call["language"] == "en"
+        assert call["country"] is None
+
+    def test_passes_country_when_configured(self):
+        provider = NewsAPIProvider(api_key="dummy", country="us")
+        client = FakeNewsApiClient([_ok_response("A")])
+        provider.newsapi = client
+        provider.fetch_top_headlines()
+        assert client.calls[0]["country"] == "us"
+
+    def test_error_status_returns_empty(self, provider):
+        provider.newsapi = FakeNewsApiClient([{"status": "error", "message": "x"}])
+        assert provider.fetch_top_headlines() == []
 
 
 class TestExtractContent:

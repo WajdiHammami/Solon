@@ -30,15 +30,6 @@ class ArticleAnalysis(BaseModel):
     def is_complete(self) -> bool:
         return self.summary is not None and self.bias is not None
 
-    def merged_with(self, other: Optional["ArticleAnalysis"]) -> "ArticleAnalysis":
-        """Fill this analysis' missing fields from ``other``."""
-        if other is None:
-            return self
-        return ArticleAnalysis(
-            summary=self.summary if self.summary is not None else other.summary,
-            bias=self.bias if self.bias is not None else other.bias,
-        )
-
 
 class TaskFailure(BaseModel):
     """One analysis task that failed; the rest of the work still completes."""

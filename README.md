@@ -18,7 +18,7 @@ Reading five articles about the same event leaves you with five partial pictures
 
 ## Features
 
-- **Topic search** — query news sources by topic; results stream into a scrollable list.
+- **Topic search** — query news sources by topic, or leave the search empty for top headlines.
 - **Article detail view** — title, source, publication date, and bias tag for any article.
 - **Batch summarization** — summarize every fetched article at once; each gets a 3–5 sentence summary and a bias tag.
 - **Cross-source synthesis** — a unified analysis identifying consensus, divergence, and single-source claims across all articles.

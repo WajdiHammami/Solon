@@ -5,6 +5,8 @@ records go and at what level. Call :func:`configure_logging` once at startup.
 
 Records go to the console and, when ``log_file`` is set, to a size-rotated
 file (``solon.log``, ``solon.log.1``, ... up to ``backup_count`` old files).
+Every line carries the request id (``[-]`` outside a request); see
+:mod:`backend.request_context`.
 
 Never log secrets, prompts, or article bodies — URLs, ids, counts, timings,
 and token usage are enough to debug with.
@@ -27,6 +29,7 @@ def configure_logging(
         "console": {
             "class": "logging.StreamHandler",
             "formatter": "default",
+            "filters": ["request_id"],
         },
     }
     if log_file is not None:
@@ -34,6 +37,7 @@ def configure_logging(
         handlers["file"] = {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "default",
+            "filters": ["request_id"],
             "filename": str(log_file),
             "maxBytes": max_bytes,
             "backupCount": backup_count,
@@ -44,9 +48,13 @@ def configure_logging(
         {
             "version": 1,
             "disable_existing_loggers": False,
+            "filters": {
+                "request_id": {"()": "backend.request_context.RequestIdFilter"},
+            },
             "formatters": {
                 "default": {
-                    "format": "%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+                    "format": "%(asctime)s %(levelname)-8s [%(request_id)s] "
+                    "%(name)s: %(message)s",
                 },
             },
             "handlers": handlers,

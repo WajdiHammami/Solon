@@ -50,24 +50,20 @@ class TestArticleWorkflow:
         assert len(llm.task_calls("summarize")) == 1
         assert len(llm.task_calls("detect_bias")) == 1
 
-    async def test_skips_summary_already_on_article(self, llm, make_article):
-        article = make_article(1, summary="existing summary")
+    async def test_ignores_analysis_sent_by_client(self, llm, make_article):
+        article = make_article(1, summary="planted summary", tag="Planted")
         result = await ArticleWorkflow(llm).run(article)
-        assert result.analysis.summary == "existing summary"
-        assert llm.task_calls("summarize") == []
+        assert result.analysis.summary == "summary of Title 1"
+        assert result.analysis.bias.label == "Political"
+        assert len(llm.task_calls("summarize")) == 1
         assert len(llm.task_calls("detect_bias")) == 1
 
-    async def test_skips_bias_already_on_article(self, llm, make_article):
-        result = await ArticleWorkflow(llm).run(make_article(1, tag="Neutral"))
-        assert result.analysis.bias.label == "Neutral"
-        assert llm.task_calls("detect_bias") == []
-        assert len(llm.task_calls("summarize")) == 1
-
-    async def test_no_llm_calls_when_article_complete(self, llm, make_article):
-        article = make_article(1, summary="s", tag="Neutral")
-        result = await ArticleWorkflow(llm).run(article)
-        assert result.analysis.summary == "s"
-        assert llm.requests == []
+    async def test_client_cannot_plant_results_in_cache(self, llm, cache, make_article):
+        article = make_article(1, summary="planted summary", tag="Planted")
+        await ArticleWorkflow(llm, cache).run(article)
+        cached = await cache.get(article.url)
+        assert cached.summary == "summary of Title 1"
+        assert cached.bias.label == "Political"
 
     async def test_uses_preresolved_known_without_cache_lookup(self, llm, make_article):
         class ExplodingCache(InMemoryAnalysisCache):
@@ -159,12 +155,13 @@ class TestBatchWorkflow:
         assert result.skipped == []
         assert result.estimated_tokens > 0
 
-    async def test_reuses_known_work_per_article(self, llm, make_article):
-        articles = [
-            make_article(1, summary="known", tag="Neutral"),
-            make_article(2),
-        ]
-        result = await self._workflow(llm).run(articles)
+    async def test_reuses_known_work_per_article(self, llm, cache, make_article):
+        articles = [make_article(1), make_article(2)]
+        await cache.put(
+            articles[0].url,
+            ArticleAnalysis(summary="known", bias=BiasAssessment(label="Neutral")),
+        )
+        result = await self._workflow(llm, cache).run(articles)
         assert result.analyses[1].summary == "known"
         assert len(llm.task_calls("summarize")) == 1
         assert len(llm.task_calls("detect_bias")) == 1
@@ -221,10 +218,13 @@ class TestBatchWorkflow:
         assert len(llm.task_calls("summarize")) == 2
         assert result.estimated_tokens <= 9000
 
-    async def test_budget_keeps_already_analyzed_articles(self, llm, make_article):
-        articles = [make_article(i, content="x" * 4000) for i in range(3)]
-        articles.append(make_article(3, summary="known", tag="None"))
-        result = await self._workflow(llm, max_tokens=5500).run(articles)  # one fits
+    async def test_budget_keeps_already_analyzed_articles(self, llm, cache, make_article):
+        articles = [make_article(i, content="x" * 4000) for i in range(4)]
+        await cache.put(
+            articles[3].url,
+            ArticleAnalysis(summary="known", bias=BiasAssessment(label="None")),
+        )
+        result = await self._workflow(llm, cache, max_tokens=5500).run(articles)  # one fits
         assert 3 in result.sources  # free to include despite lowest priority
         assert result.skipped == [1, 2]
 

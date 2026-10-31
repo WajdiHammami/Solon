@@ -5,9 +5,11 @@ Graph::
     START -> load -> (summarize ∥ detect_bias, only the missing ones) -> save -> END
                   \\-> END   (nothing missing)
 
-``load`` merges what the request already carries (``Article.summary`` /
-``Article.tag``) with the cache; only the missing pieces are computed, and
-newly computed results are written back to the cache. A failing task is
+``load`` looks the article up in the server-side cache; only the missing
+pieces are computed, and newly computed results are written back to the
+cache. Analysis fields sent by the client (``Article.summary`` /
+``Article.tag``) are never trusted: a client could otherwise skip work or
+plant results that would then be cached for everyone. A failing task is
 recorded as a :class:`TaskFailure` instead of aborting the workflow, so the
 other task's result is still returned and cached.
 """
@@ -86,14 +88,13 @@ class ArticleWorkflow:
         )
 
     async def resolve_known(self, article: Article) -> ArticleAnalysis:
-        """What is already known about ``article``: its own fields, then the cache."""
-        known = ArticleAnalysis(
-            summary=article.summary or None,
-            bias=BiasAssessment(label=article.tag) if article.tag else None,
-        )
-        if not known.is_complete and self._cache:
-            known = known.merged_with(await self._cache.get(article.url))
-        return known
+        """What the server already knows about ``article`` (cache only).
+
+        The article's own ``summary``/``tag`` are deliberately ignored; see
+        the module docstring.
+        """
+        cached = await self._cache.get(article.url) if self._cache else None
+        return cached or ArticleAnalysis()
 
     def _build_graph(self) -> CompiledStateGraph:
         graph = StateGraph(ArticleState)
