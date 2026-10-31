@@ -23,13 +23,16 @@ signals:
 
 private:
     void updateButtons();
+    void updateBias();
 
     QLabel* m_title;
     QLabel* m_source;
     QLabel* m_date;
-    QLabel* m_summary;
+    QLabel* m_link;
     QLabel* m_biasTag;
     QLabel* m_biasExplanation;
+    QLabel* m_summaryHeading;
+    QLabel* m_summary;
 
     Article m_article;
 

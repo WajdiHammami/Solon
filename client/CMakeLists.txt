@@ -15,6 +15,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Network Widgets)
 
 add_executable(Solon 
                 src/main.cpp 
+                src/resources.qrc
                 src/app/Application.cpp 
                 src/app/ClientSettings.cpp
                 src/ui/MainWindow.cpp 
@@ -26,6 +27,7 @@ add_executable(Solon
                 src/ui/dialogs/SettingsDialog.cpp
                 src/ui/Icons.cpp
                 src/ui/ArticleItemDelegate.cpp
+                src/ui/Format.cpp
                 )
 target_include_directories(Solon PRIVATE src/)
 target_link_libraries(Solon Qt6::Core Qt6::Network Qt6::Widgets)

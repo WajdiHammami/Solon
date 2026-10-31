@@ -4,10 +4,11 @@
 #include <QLabel>
 #include <QTextEdit>
 #include <QVBoxLayout>
+#include "ui/Format.h"
 
 SynthesisView::SynthesisView(QWidget* parent): QWidget(parent) {
 
-    m_header = new QLabel("Synthesis Overview", this);
+    m_header = new QLabel("SYNTHESIS", this);
     m_header->setObjectName("synthesisHeader");
 
     m_notices = new QLabel(this);
@@ -19,10 +20,11 @@ SynthesisView::SynthesisView(QWidget* parent): QWidget(parent) {
     m_synthesis->setReadOnly(true);
     m_synthesis->setPlaceholderText("Tick articles and run 'Summarize Selected' to generate a synthesis...");
     m_synthesis->setObjectName("synthesisText");
+    m_synthesis->document()->setDocumentMargin(14);
 
     QVBoxLayout* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(12, 8, 12, 8);
-    layout->setSpacing(6);
+    layout->setContentsMargins(4, 10, 4, 4);
+    layout->setSpacing(8);
     layout->addWidget(m_header);
     layout->addWidget(m_notices);
     layout->addWidget(m_synthesis);
@@ -33,6 +35,7 @@ SynthesisView::SynthesisView(QWidget* parent): QWidget(parent) {
 
 void SynthesisView::setSynthesis(const QString& synthesis) {
     m_synthesis->setMarkdown(synthesis);
+    Format::polishMarkdown(m_synthesis->document());
     show();
 }
 

@@ -1,8 +1,6 @@
 
 
 #include "ArticleListModel.h"
-#include <QBrush>
-#include <QColor>
 
 
 int ArticleListModel::rowCount(const QModelIndex& parent) const {
@@ -27,9 +25,6 @@ QVariant ArticleListModel::data(const QModelIndex& index, int role) const {
         case SummarizedRole:  return summarized;
         case Qt::CheckStateRole:
             return m_checked.contains(article.id) ? Qt::Checked : Qt::Unchecked;
-        case Qt::ForegroundRole:
-            // Summarized titles stand out (Catppuccin green).
-            return summarized ? QVariant(QBrush(QColor("#a6e3a1"))) : QVariant();
         case Qt::ToolTipRole: {
             QString tip = QString("%1 · %2").arg(article.source_name, article.published_at.left(10));
             if (summarized) {
@@ -114,7 +109,7 @@ bool ArticleListModel::applyAnalysis(int articleId, const ArticleAnalysis& analy
         article.tag_explanation = analysis.biasExplanation;
     }
     emit dataChanged(index(row), index(row),
-        {SummaryRole, TagRole, SummarizedRole, Qt::ForegroundRole, Qt::ToolTipRole});
+        {SummaryRole, TagRole, SummarizedRole, Qt::ToolTipRole});
     return true;
 }
 

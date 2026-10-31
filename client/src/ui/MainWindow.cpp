@@ -11,6 +11,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QLabel>
+#include <QStackedWidget>
 #include "models/ArticleSortProxy.h"
 #include "ui/ArticleItemDelegate.h"
 #include "ui/views/ArticleDetailView.h"
@@ -63,8 +64,14 @@ void MainWindow::setupUI(){
     showStatus("Ready");
 
 
+    m_searchBar->setObjectName("searchBar");
+    m_searchButton->setDefault(true);
+
     QVBoxLayout* main_layout = new QVBoxLayout(centralWidget);
+    main_layout->setContentsMargins(16, 14, 16, 10);
+    main_layout->setSpacing(12);
     QHBoxLayout* searchLayout = new QHBoxLayout();
+    searchLayout->setSpacing(10);
     main_layout->addLayout(searchLayout);
 
     searchLayout->addWidget(m_searchBar);
@@ -84,20 +91,43 @@ void MainWindow::setupUI(){
     listHeader->setContentsMargins(4, 0, 4, 0);
     listHeader->addWidget(m_selectAll);
     listHeader->addStretch();
-    listHeader->addWidget(new QLabel("Sort by", listPanel));
+    QLabel* sortLabel = new QLabel("Sort by", listPanel);
+    sortLabel->setObjectName("mutedLabel");
+    listHeader->addWidget(sortLabel);
     listHeader->addWidget(m_sortCombo);
 
     m_sortProxy->setSourceModel(m_articleListModel);
     m_articlesView = new QListView(listPanel);
+    m_articlesView->setObjectName("articleList");
     m_articlesView->setModel(m_sortProxy);
     m_articlesView->setItemDelegate(new ArticleItemDelegate(m_articlesView));
     m_articlesView->setMouseTracking(true);  // hover highlight + tooltips
+    m_articlesView->setUniformItemSizes(true);
+    m_articlesView->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    m_articlesView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);  // cards elide instead
+    m_articlesView->setResizeMode(QListView::Adjust);
+
+    // Until the first search, show a hint instead of an empty box.
+    QLabel* emptyHint = new QLabel(
+        "<div style='font-size:15px; font-weight:bold; color:#cdd6f4;'>No articles yet</div>"
+        "<div style='margin-top:6px;'>Search a topic, or press <b>Enter</b> on an empty search<br>"
+        "for today's top headlines.</div>", listPanel);
+    emptyHint->setObjectName("emptyHint");
+    emptyHint->setAlignment(Qt::AlignCenter);
+    QStackedWidget* listStack = new QStackedWidget(listPanel);
+    listStack->addWidget(emptyHint);
+    listStack->addWidget(m_articlesView);
+    auto updateEmptyState = [this, listStack](){
+        listStack->setCurrentIndex(m_articleListModel->rowCount() == 0 ? 0 : 1);
+    };
+    connect(m_articleListModel, &QAbstractItemModel::modelReset, this, updateEmptyState);
+    updateEmptyState();
 
     QVBoxLayout* listLayout = new QVBoxLayout(listPanel);
     listLayout->setContentsMargins(0, 0, 0, 0);
-    listLayout->setSpacing(6);
+    listLayout->setSpacing(8);
     listLayout->addLayout(listHeader);
-    listLayout->addWidget(m_articlesView);
+    listLayout->addWidget(listStack);
 
     const int savedSort = m_settings->articleSort();
     const int sortIndex = (savedSort >= 0 && savedSort < m_sortCombo->count()) ? savedSort : 0;
@@ -110,6 +140,12 @@ void MainWindow::setupUI(){
 
     m_synthesisSpliter->addWidget(listPanel);
     m_synthesisSpliter->addWidget(m_synthesisView);
+    m_splitter->setHandleWidth(8);
+    m_synthesisSpliter->setHandleWidth(8);
+    m_splitter->setChildrenCollapsible(false);
+    m_synthesisSpliter->setChildrenCollapsible(false);
+    m_splitter->setSizes({760, 440});
+    m_synthesisSpliter->setSizes({430, 330});
     updateBatchControls();
 
     m_detailView->hide();
@@ -138,7 +174,11 @@ void MainWindow::setupConnections(){
         if (articles.isEmpty()) {
             showStatus("No articles found — try another topic", Severity::Warning);
         } else {
-            showStatus(QString("Loaded %1 articles").arg(articles.size()), Severity::Success);
+            int summarized = 0;
+            for (const Article& article : articles) summarized += !article.summary.isEmpty();
+            QString message = QString("Loaded %1 articles").arg(articles.size());
+            if (summarized > 0) message += QString(" — %1 already summarized").arg(summarized);
+            showStatus(message, Severity::Success);
         }
     });
     connect(m_articlesView, &QListView::clicked, this, [this](const QModelIndex& index){

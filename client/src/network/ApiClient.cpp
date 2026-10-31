@@ -204,6 +204,7 @@ Article ApiClient::parseArticle(const QJsonObject& object){
     article.url = object["url"].toString();
     article.source_name = object["source_name"].toString();
     article.tag = object["tag"].toString();
+    article.tag_explanation = object["tag_explanation"].toString();
     article.published_at = object["published_at"].toString();
     article.content = object["content"].toString();
     article.summary = object["summary"].toString();
