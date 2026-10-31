@@ -26,6 +26,6 @@ SynthesisView::SynthesisView(QWidget* parent): QWidget(parent) {
 }
 
 void SynthesisView::setSynthesis(const QString& synthesis) {
-    m_synthesis->setText(synthesis);
+    m_synthesis->setMarkdown(synthesis);
     show();
 }

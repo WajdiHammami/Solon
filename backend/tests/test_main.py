@@ -14,6 +14,7 @@ from backend.models import Article
 class FakeProvider:
     def __init__(self):
         self.fetch_calls = []
+        self.extract_calls = []
 
     def fetch_articles(self, query, page_size=40, page=1):
         self.fetch_calls.append({"query": query, "page_size": page_size, "page": page})
@@ -28,11 +29,16 @@ class FakeProvider:
         ]
 
     def extract_content(self, url):
-        return f"content for {url}"
+        self.extract_calls.append(url)
+        return "Scraped full article body. " * 40  # well over the hydration threshold
 
 
 class FakeSummarizer:
+    def __init__(self):
+        self.received = None
+
     def run_batch_summarization(self, articles):
+        self.received = articles
         return {
             "summaries": [f"summary {a.id}" for a in articles],
             "synthesis": "synthesis text",
@@ -40,6 +46,7 @@ class FakeSummarizer:
         }
 
     def run_singular_summarization(self, article, config):
+        self.received = [article]
         article.summary = "single summary"
         article.tag = "Neutral"
         return {"article": article}
@@ -51,10 +58,14 @@ def fake_provider():
 
 
 @pytest.fixture
-def client(fake_provider):
-    provider = fake_provider
-    app.dependency_overrides[get_providers] = lambda: [provider]
-    app.dependency_overrides[get_summarizer] = lambda: FakeSummarizer()
+def fake_summarizer():
+    return FakeSummarizer()
+
+
+@pytest.fixture
+def client(fake_provider, fake_summarizer):
+    app.dependency_overrides[get_providers] = lambda: [fake_provider]
+    app.dependency_overrides[get_summarizer] = lambda: fake_summarizer
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
@@ -119,7 +130,24 @@ def test_summarize_batch_returns_response(client):
     assert body["tags"]["1"] == ["Political", "explanation"]
 
 
+def test_summarize_hydrates_missing_content(client, fake_provider, fake_summarizer):
+    # Article has no content -> the endpoint should scrape it before summarizing.
+    client.post("/summarize", json={"articles": [_article_payload(1)]})
+    assert fake_provider.extract_calls == ["https://example.com/1"]
+    assert fake_summarizer.received[0].content.startswith("Scraped full article body.")
+
+
+def test_summarize_skips_scrape_when_content_present(
+    client, fake_provider, fake_summarizer
+):
+    payload = _article_payload(1)
+    payload["content"] = "x" * 1000  # already above the hydration threshold
+    client.post("/summarize", json={"articles": [payload]})
+    assert fake_provider.extract_calls == []  # no scrape needed
+    assert fake_summarizer.received[0].content == "x" * 1000
+
+
 def test_get_content(client):
     resp = client.get("/article/content", params={"url": "https://example.com/x"})
     assert resp.status_code == 200
-    assert resp.json() == "content for https://example.com/x"
+    assert resp.json() == "Scraped full article body. " * 40

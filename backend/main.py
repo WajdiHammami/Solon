@@ -51,13 +51,38 @@ def get_feed(
     return articles
 
 
+# Articles with less text than this are scraped for their full content before
+# summarization (NewsAPI only returns a short snippet).
+_MIN_CONTENT_CHARS = 600
+
+
+def _hydrate_content(
+    articles: list[Article], providers: list[NewsAPIProvider]
+) -> list[Article]:
+    """Scrape full article text for any article lacking substantial content.
+
+    Falls back to whatever content the article already had (the NewsAPI
+    snippet) when scraping yields nothing, so summarization always has input.
+    """
+    for article in articles:
+        if article.content and len(article.content) >= _MIN_CONTENT_CHARS:
+            continue
+        scraped = providers[0].extract_content(article.url)
+        if scraped:
+            article.content = scraped
+    return articles
+
+
 @app.post("/summarize")
 def summarize(
     request: SummarizeRequest,
     summarizer: SummarizationPipeline = Depends(get_summarizer),
+    providers: list[NewsAPIProvider] = Depends(get_providers),
 ) -> SummarizeResponse | Article:
-    if len(request.articles) > 1:
-        result = summarizer.run_batch_summarization(request.articles)
+    articles = _hydrate_content(request.articles, providers)
+
+    if len(articles) > 1:
+        result = summarizer.run_batch_summarization(articles)
         return SummarizeResponse(
             summaries=result["summaries"],
             synthesis=result["synthesis"],
@@ -65,7 +90,7 @@ def summarize(
         )
 
     result = summarizer.run_singular_summarization(
-        request.articles[0], config={"enable_bias": True}
+        articles[0], config={"enable_bias": True}
     )
     return result["article"]
 

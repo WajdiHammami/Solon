@@ -51,9 +51,19 @@ class NewsAPIProvider(NewsProvider):
                         url=raw["url"],
                         source_name=raw["source"]["name"],
                         published_at=raw["publishedAt"],
+                        # NewsAPI ships a short description/content snippet; keep
+                        # it as a baseline so summaries have something to work
+                        # with even before the full article is scraped.
+                        content=self._snippet(raw),
                     )
                 )
         return articles
+
+    @staticmethod
+    def _snippet(raw: dict) -> str | None:
+        parts = [raw.get("description"), raw.get("content")]
+        snippet = "\n\n".join(p for p in parts if p).strip()
+        return snippet or None
 
     def extract_content(self, url: str) -> str:
         try:

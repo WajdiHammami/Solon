@@ -13,7 +13,7 @@ from backend.news_providers import newsapi_provider as provider_module
 from backend.news_providers.newsapi_provider import NewsAPIProvider
 
 
-def _ok_response(*titles):
+def _ok_response(*titles, description=None, content=None):
     return {
         "status": "ok",
         "articles": [
@@ -22,6 +22,8 @@ def _ok_response(*titles):
                 "url": f"https://example.com/{t}",
                 "source": {"name": f"Source {t}"},
                 "publishedAt": "2024-01-01T00:00:00Z",
+                "description": description,
+                "content": content,
             }
             for t in titles
         ],
@@ -75,6 +77,18 @@ class TestFetchArticles:
         provider.fetch_articles("tech", page_size=7, page=3)
         assert client.calls[0]["page_size"] == 7
         assert client.calls[0]["page"] == 3
+
+    def test_captures_snippet_as_baseline_content(self, provider):
+        provider.newsapi = FakeNewsApiClient(
+            [_ok_response("A", description="A short blurb.", content="Truncated body…")]
+        )
+        article = provider.fetch_articles("tech")[0]
+        assert "A short blurb." in article.content
+        assert "Truncated body…" in article.content
+
+    def test_content_is_none_when_snippet_absent(self, provider):
+        provider.newsapi = FakeNewsApiClient([_ok_response("A")])
+        assert provider.fetch_articles("tech")[0].content is None
 
 
 class TestExtractContent:

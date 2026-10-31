@@ -80,7 +80,7 @@ void MainWindow::setupConnections(){
         m_statusBar->showMessage("Finished");
     });
     connect(m_searchButton, &QPushButton::clicked, this, [this](){
-        m_apiClient->fetchFeed(m_searchBar->text(), 20, 1);
+        m_apiClient->fetchFeed(m_searchBar->text(), 5, 1);
         m_statusBar->showMessage("Loading...");
         m_progressBar->show();
         m_synthesisView->setSynthesis("");
