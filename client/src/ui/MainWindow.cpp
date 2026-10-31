@@ -7,6 +7,7 @@
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QToolBar>
+#include <QStyle>
 #include "ui/views/ArticleDetailView.h"
 #include "ui/views/SynthesisView.h"
 
@@ -49,7 +50,7 @@ void MainWindow::setupUI(){
 
     m_statusBar = statusBar();
     statusBar()->addPermanentWidget(m_progressBar);
-    statusBar()->showMessage("Ready");
+    showStatus("Ready");
 
 
     QVBoxLayout* main_layout = new QVBoxLayout(centralWidget);
@@ -81,17 +82,26 @@ void MainWindow::setupUI(){
 void MainWindow::setupConnections(){
     // Feed
     connect(m_searchButton, &QPushButton::clicked, this, [this](){
+        if (m_feedInFlight) return;
         const QString topic = m_searchBar->text().trimmed();
         m_apiClient->fetchFeed(topic, kFeedPageSize, 1);
+        m_feedInFlight = true;
+        m_searchButton->setEnabled(false);
         beginRequest(topic.isEmpty() ? "Loading top headlines..." : QString("Searching \"%1\"...").arg(topic));
         m_synthesisView->clear();
     });
     connect(m_searchBar, &QLineEdit::returnPressed, m_searchButton, &QPushButton::click);
     connect(m_apiClient, &ApiClient::feedReceived, this, [this](const QList<Article>& articles){
+        m_feedInFlight = false;
+        m_searchButton->setEnabled(true);
         m_articleListModel->setArticles(articles);
         m_batchSummarize->setEnabled(!articles.isEmpty() && !m_batchInFlight);
         endRequest();
-        m_statusBar->showMessage(QString("Loaded %1 articles").arg(articles.size()));
+        if (articles.isEmpty()) {
+            showStatus("No articles found — try another topic", Severity::Warning);
+        } else {
+            showStatus(QString("Loaded %1 articles").arg(articles.size()), Severity::Success);
+        }
     });
     connect(m_articlesView, &QListView::clicked, this, [this](const QModelIndex& index){
         m_detailView->setArticle(m_articleListModel->articleAt(index.row()));
@@ -152,8 +162,16 @@ void MainWindow::onBatchAnalysis(const BatchAnalysis& batch){
     m_batchInFlight = false;
     m_batchSummarize->setEnabled(!m_articleListModel->allArticles().isEmpty());
     endRequest();
-    m_statusBar->showMessage(QString("Analyzed %1 articles — %2 failed tasks, %3 skipped")
-        .arg(batch.analyses.size()).arg(batch.failed.size()).arg(batch.skipped.size()));
+
+    const QString summary = QString("Analyzed %1 articles — %2 failed tasks, %3 skipped")
+        .arg(batch.analyses.size()).arg(batch.failed.size()).arg(batch.skipped.size());
+    if (batch.analyses.isEmpty() && !batch.failed.isEmpty()) {
+        showStatus("Analysis failed — " + summary + " (details above the synthesis)", Severity::Error);
+    } else if (!batch.failed.isEmpty() || !batch.skipped.isEmpty()) {
+        showStatus(summary + " (details above the synthesis)", Severity::Warning);
+    } else {
+        showStatus(summary, Severity::Success);
+    }
 }
 
 
@@ -163,19 +181,25 @@ void MainWindow::onArticleAnalysis(int articleId, const ArticleAnalysis& analysi
     endRequest();
 
     if (failures.isEmpty()) {
-        m_statusBar->showMessage("Article analyzed");
+        showStatus("Article analyzed", Severity::Success);
         return;
     }
     QStringList messages;
     for (const TaskFailure& failure : failures) messages << describeFailure(failure);
-    m_statusBar->showMessage("Partly analyzed — " + messages.join("; "));
+    const bool nothingProduced = analysis.summary.isEmpty() && analysis.biasLabel.isEmpty();
+    showStatus((nothingProduced ? "Article analysis failed — " : "Partly analyzed — ") + messages.join("; "),
+               nothingProduced ? Severity::Error : Severity::Warning);
 }
 
 
 void MainWindow::onContent(const QString& url, const QString& content){
-    m_articleListModel->setContent(url, content);
+    m_articleListModel->setFullText(url, content);
     endRequest();
-    m_statusBar->showMessage("Article's content received");
+    if (content.isEmpty()) {
+        showStatus("Couldn't extract this article's text (paywalled or unsupported page)", Severity::Warning);
+        return;
+    }
+    showStatus("Article's content received", Severity::Success);
 
     // Only open the reader if the user is still looking at that article.
     if (m_detailView->hasArticle() && m_detailView->article().url == url) {
@@ -186,11 +210,14 @@ void MainWindow::onContent(const QString& url, const QString& content){
 
 
 void MainWindow::onError(ApiClient::Request request, const QString& message){
+    // Every failure ends that request's loading state and re-enables its controls.
     endRequest();
     QString what;
     switch (request) {
         case ApiClient::Request::Feed:
             what = "Loading articles";
+            m_feedInFlight = false;
+            m_searchButton->setEnabled(true);
             break;
         case ApiClient::Request::Analyze:
             what = "Analysis";
@@ -206,14 +233,26 @@ void MainWindow::onError(ApiClient::Request request, const QString& message){
             what = "Downloading content";
             break;
     }
-    m_statusBar->showMessage(QString("%1 failed: %2").arg(what, message));
+    showStatus(QString("%1 failed: %2").arg(what, message), Severity::Error);
+}
+
+
+void MainWindow::showStatus(const QString& message, Severity severity){
+    static const char* names[] = {"info", "success", "warning", "error"};
+    static const char* icons[] = {"", "✔ ", "⚠ ", "✖ "};
+    const int i = static_cast<int>(severity);
+    m_statusBar->setProperty("severity", names[i]);
+    // Re-evaluate the stylesheet now that the property changed.
+    m_statusBar->style()->unpolish(m_statusBar);
+    m_statusBar->style()->polish(m_statusBar);
+    m_statusBar->showMessage(QString::fromUtf8(icons[i]) + message);
 }
 
 
 void MainWindow::beginRequest(const QString& status){
     ++m_pendingRequests;
     m_progressBar->show();
-    m_statusBar->showMessage(status);
+    showStatus(status);
 }
 
 

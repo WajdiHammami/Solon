@@ -66,6 +66,16 @@ Summaries and bias tags are cached by article URL, so repeat requests only
 pay for the synthesis. Analysis fields sent by the client (`summary`, `tag`)
 are ignored: only server-side results are reused or cached.
 
+**Only issued articles are processed.** `/feed` records a SHA-256 fingerprint
+of each article's title, content and source, keyed by its URL. `/analyze`,
+`/analyze/article` and `/article/content` recompute and compare it, and answer
+`403` for any article that wasn't issued or was modified — so a client can't
+plant forged content in the cache or make the server fetch arbitrary URLs.
+The registry is in memory for now: after a server restart, search again.
+
+Errors always have a JSON body: `{"detail": {"message": ...}}` (`502` when
+the news provider fails, `500` with the `request_id` for unexpected errors).
+
 Every response carries an `X-Request-ID` header, and every log line for that
 request is tagged with it (`[<id>]`). Callers may send their own id (up to 64
 characters from `A-Z a-z 0-9 . _ -`); anything else is replaced.
@@ -83,6 +93,7 @@ backend/
 │   └── newsapi_provider.py  # NewsAPI implementation
 ├── logging_config.py        # Console + rotating file logging
 ├── request_context.py       # Request id for log correlation
+├── article_registry.py      # Fingerprints of issued articles (403 otherwise)
 ├── llm/                     # Provider-agnostic LLM layer
 │   ├── base.py              # LLMClient interface
 │   ├── models.py            # GenerationRequest / GenerationResponse

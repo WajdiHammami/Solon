@@ -83,6 +83,10 @@ class TestFeed:
 
 
 class TestAnalyze:
+    @pytest.fixture(autouse=True)
+    def _issue_articles(self, issue):
+        issue(*(_article_payload(i) for i in range(5)))
+
     def test_returns_batch_analysis(self, client):
         resp = client.post(
             "/analyze", json={"articles": [_article_payload(1), _article_payload(2)]}
@@ -132,8 +136,9 @@ class TestAnalyze:
         client.post("/analyze/article", json=_article_payload(1))
         assert fake_provider.extract_calls == ["https://example.com/1"]
 
-    def test_skips_scrape_when_content_present(self, client, fake_provider):
-        client.post("/analyze/article", json=_article_payload(1, content="x" * 1000))
+    def test_skips_scrape_when_content_present(self, client, fake_provider, issue):
+        [payload] = issue(_article_payload(9, content="x" * 1000))
+        client.post("/analyze/article", json=payload)
         assert fake_provider.extract_calls == []
 
     def test_repeat_request_served_from_cache(self, make_client, fake_provider):
@@ -145,7 +150,8 @@ class TestAnalyze:
         assert fake_provider.extract_calls == ["https://example.com/1"]
 
 
-def test_get_content(client):
-    resp = client.get("/article/content", params={"url": "https://example.com/x"})
+def test_get_content(client, issue):
+    issue(_article_payload(1))
+    resp = client.get("/article/content", params={"url": "https://example.com/1"})
     assert resp.status_code == 200
     assert resp.json() == SCRAPED

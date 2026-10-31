@@ -6,6 +6,10 @@ from backend.models import Article
 DEFAULT_PAGE_SIZE = 5
 
 
+class NewsProviderError(Exception):
+    """The news source failed (bad key, rate limit, unreachable, ...)."""
+
+
 class NewsProvider(ABC):
     """Abstract interface every news source must implement.
 
@@ -20,7 +24,10 @@ class NewsProvider(ABC):
         page_size: int = DEFAULT_PAGE_SIZE,
         page: int = 1,
     ) -> list[Article]:
-        """Fetch article metadata matching ``query``."""
+        """Fetch article metadata matching ``query``.
+
+        Raises :class:`NewsProviderError` when the source fails.
+        """
 
     @abstractmethod
     def fetch_top_headlines(
@@ -28,7 +35,10 @@ class NewsProvider(ABC):
         page_size: int = DEFAULT_PAGE_SIZE,
         page: int = 1,
     ) -> list[Article]:
-        """Fetch the current top headlines (no query)."""
+        """Fetch the current top headlines (no query).
+
+        Raises :class:`NewsProviderError` when the source fails.
+        """
 
     @abstractmethod
     def extract_content(self, url: str) -> str:

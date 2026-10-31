@@ -57,11 +57,6 @@ def captured():
     backend_logger.setLevel(previous_level)
 
 
-@pytest.fixture
-def client(make_client):
-    return make_client()[0]
-
-
 def _payload(id):
     return {
         "id": id,
@@ -70,6 +65,12 @@ def _payload(id):
         "source_name": "S",
         "published_at": "2024-01-01T00:00:00Z",
     }
+
+
+@pytest.fixture
+def client(make_client, issue):
+    issue(_payload(1), _payload(2))
+    return make_client()[0]
 
 
 def test_response_carries_generated_id(client):
@@ -104,7 +105,7 @@ def test_workflow_logs_carry_the_request_id(client, captured):
 def test_sync_endpoint_in_worker_thread_carries_the_id(client, captured):
     client.get(
         "/article/content",
-        params={"url": "https://e.com/x"},
+        params={"url": "https://example.com/1"},
         headers={REQUEST_ID_HEADER: "content-1"},
     )
     extract_lines = [rid for rid, msg in captured.lines if msg.startswith("Extracted")]

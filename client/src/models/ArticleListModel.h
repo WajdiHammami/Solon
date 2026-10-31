@@ -21,7 +21,7 @@ public:
 
     // In-place updates; return false when no article matches.
     bool applyAnalysis(int articleId, const ArticleAnalysis& analysis);
-    bool setContent(const QString& url, const QString& content);
+    bool setFullText(const QString& url, const QString& text);
 public slots:
     void setArticles(const QList<Article>& articles);
 

@@ -10,11 +10,20 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+import asyncio
+
 from backend import main
+from backend.article_registry import InMemoryArticleRegistry
 from backend.cache.memory import InMemoryAnalysisCache
 from backend.llm.base import LLMClient
 from backend.llm.models import GenerationResponse, LLMConfig
-from backend.main import app, get_article_workflow, get_batch_workflow, get_providers
+from backend.main import (
+    app,
+    get_article_workflow,
+    get_batch_workflow,
+    get_providers,
+    get_registry,
+)
 from backend.models import Article
 from backend.news_providers.base import DEFAULT_PAGE_SIZE, NewsProvider
 from backend.workflows import prompts
@@ -151,7 +160,23 @@ def fake_provider():
 
 
 @pytest.fixture
-def make_client(fake_provider, monkeypatch):
+def registry():
+    return InMemoryArticleRegistry()
+
+
+@pytest.fixture
+def issue(registry):
+    """Register article payloads as if ``/feed`` had returned them."""
+
+    def _issue(*payloads: dict) -> list[dict]:
+        asyncio.run(registry.register([Article(**p) for p in payloads]))
+        return list(payloads)
+
+    return _issue
+
+
+@pytest.fixture
+def make_client(fake_provider, registry, monkeypatch):
     """Build a TestClient whose workflows run on the given scripted LLM."""
     # Startup would otherwise configure logging to write into backend/logs.
     monkeypatch.setattr(main, "configure_logging", lambda *a, **k: None)
@@ -170,6 +195,7 @@ def make_client(fake_provider, monkeypatch):
         app.dependency_overrides[get_providers] = lambda: [fake_provider]
         app.dependency_overrides[get_article_workflow] = lambda: article_workflow
         app.dependency_overrides[get_batch_workflow] = lambda: batch_workflow
+        app.dependency_overrides[get_registry] = lambda: registry
         client = TestClient(app)
         client.__enter__()
         clients.append(client)

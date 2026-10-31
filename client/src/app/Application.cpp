@@ -78,6 +78,10 @@ Application::Application(int argc, char* argv[]): QApplication(argc, argv), m_Ma
             font-size: 11px;
         }
 
+        QStatusBar[severity="success"] { color: #a6e3a1; }
+        QStatusBar[severity="warning"] { color: #f9e2af; }
+        QStatusBar[severity="error"]   { color: #f38ba8; font-weight: bold; }
+
         QProgressBar {
             background-color: #313244;
             border: none;

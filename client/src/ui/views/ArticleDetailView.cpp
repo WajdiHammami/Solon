@@ -77,10 +77,10 @@ ArticleDetailView::ArticleDetailView(QWidget* parent)
     });
 
     connect(m_readButton, &QPushButton::clicked, this, [this](){
-        if(m_article.content.isEmpty()){
+        if(m_article.full_text.isEmpty()){
             emit contentRequest(m_article.url);
         }else{
-            showContent(m_article.content);
+            showContent(m_article.full_text);
         }
 
    });

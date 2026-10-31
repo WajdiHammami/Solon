@@ -67,6 +67,10 @@ void ApiClient::analyzeArticles(const QList<Article>& articles){
         QJsonDocument doc;
         if(!parseJson(Request::Analyze, body, doc)) return;
         QJsonObject obj = doc.object();
+        if(!obj["analyses"].isObject()){
+            emit errorOccurred(Request::Analyze, "Unexpected response from server (no analyses)");
+            return;
+        }
 
         BatchAnalysis batch;
         QJsonObject analyses = obj["analyses"].toObject();
@@ -89,6 +93,10 @@ void ApiClient::analyzeArticle(const Article& article){
         QJsonDocument doc;
         if(!parseJson(Request::AnalyzeArticle, body, doc)) return;
         QJsonObject obj = doc.object();
+        if(!obj["analysis"].isObject()){
+            emit errorOccurred(Request::AnalyzeArticle, "Unexpected response from server (no analysis)");
+            return;
+        }
 
         QList<TaskFailure> failures;
         for(const QJsonValue& f: obj["failures"].toArray()) failures.append(parseFailure(f.toObject()));
@@ -162,6 +170,11 @@ QString ApiClient::errorMessage(QNetworkReply* reply, const QByteArray& body){
     }
     if(reply->error() == QNetworkReply::OperationCanceledError){
         return "Request timed out";
+    }
+    if(reply->error() == QNetworkReply::ConnectionRefusedError
+       || reply->error() == QNetworkReply::HostNotFoundError){
+        return QString("Can't reach the Solon server at %1 — is it running?")
+            .arg(reply->url().adjusted(QUrl::RemovePath | QUrl::RemoveQuery).toString());
     }
     return reply->errorString();
 }

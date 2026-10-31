@@ -30,6 +30,10 @@ private:
     void onContent(const QString& url, const QString& content);
     void onError(ApiClient::Request request, const QString& message);
 
+    enum class Severity { Info, Success, Warning, Error };
+    // Status bar text, colored by severity (see QStatusBar[severity] in the stylesheet).
+    void showStatus(const QString& message, Severity severity = Severity::Info);
+
     // Progress bar stays visible while any request is in flight.
     void beginRequest(const QString& status);
     void endRequest();
@@ -50,4 +54,5 @@ private:
     SynthesisView* m_synthesisView;
     int m_pendingRequests = 0;
     bool m_batchInFlight = false;
+    bool m_feedInFlight = false;
 };

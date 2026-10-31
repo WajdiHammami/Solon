@@ -6,10 +6,13 @@ NewsAPI and is skipped unless a key is configured.
 """
 
 import pytest
+import requests
+from newsapi.newsapi_exception import NewsAPIException
 
 from backend.config import get_settings
 from backend.models import Article
 from backend.news_providers import newsapi_provider as provider_module
+from backend.news_providers.base import NewsProviderError
 from backend.news_providers.newsapi_provider import NewsAPIProvider
 
 
@@ -69,11 +72,30 @@ class TestFetchArticles:
         assert ids == [0, 1, 2]
         assert len(set(ids)) == len(ids)
 
-    def test_error_status_is_skipped(self, provider):
+    def test_error_status_raises_provider_error(self, provider):
         provider.newsapi = FakeNewsApiClient(
             [{"status": "error", "message": "rate limited"}]
         )
-        assert provider.fetch_articles("tech") == []
+        with pytest.raises(NewsProviderError, match="rate limited"):
+            provider.fetch_articles("tech")
+
+    def test_sdk_exception_becomes_provider_error(self, provider):
+        class RaisingClient:
+            def get_everything(self, **kwargs):
+                raise NewsAPIException({"status": "error", "message": "bad key"})
+
+        provider.newsapi = RaisingClient()
+        with pytest.raises(NewsProviderError, match="bad key"):
+            provider.fetch_articles("tech")
+
+    def test_network_failure_becomes_provider_error(self, provider):
+        class RaisingClient:
+            def get_everything(self, **kwargs):
+                raise requests.ConnectionError("no route")
+
+        provider.newsapi = RaisingClient()
+        with pytest.raises(NewsProviderError, match="unreachable"):
+            provider.fetch_articles("tech")
 
     def test_passes_paging_params_to_client(self, provider):
         client = FakeNewsApiClient([_ok_response("A")])
@@ -126,9 +148,10 @@ class TestFetchTopHeadlines:
         provider.fetch_top_headlines()
         assert client.calls[0]["country"] == "us"
 
-    def test_error_status_returns_empty(self, provider):
+    def test_error_status_raises_provider_error(self, provider):
         provider.newsapi = FakeNewsApiClient([{"status": "error", "message": "x"}])
-        assert provider.fetch_top_headlines() == []
+        with pytest.raises(NewsProviderError):
+            provider.fetch_top_headlines()
 
 
 class TestExtractContent:

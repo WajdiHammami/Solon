@@ -78,11 +78,11 @@ bool ArticleListModel::applyAnalysis(int articleId, const ArticleAnalysis& analy
 }
 
 
-bool ArticleListModel::setContent(const QString& url, const QString& content){
+bool ArticleListModel::setFullText(const QString& url, const QString& text){
     bool found = false;
     for (Article& article : m_articles) {
         if (article.url == url) {
-            article.content = content;
+            article.full_text = text;
             found = true;
         }
     }

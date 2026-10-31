@@ -1,10 +1,17 @@
 import logging
+from collections.abc import Callable
 
+import requests
 from newsapi import NewsApiClient
+from newsapi.newsapi_exception import NewsAPIException
 from newspaper import Article as NewspaperArticle
 
 from backend.models import Article
-from backend.news_providers.base import DEFAULT_PAGE_SIZE, NewsProvider
+from backend.news_providers.base import (
+    DEFAULT_PAGE_SIZE,
+    NewsProvider,
+    NewsProviderError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +42,15 @@ class NewsAPIProvider(NewsProvider):
 
         articles: list[Article] = []
         for q in queries:
-            response = self.newsapi.get_everything(
-                q=q,
-                sources=sources_param,
-                language=self.language,
-                sort_by=sort_by,
-                page_size=page_size,
-                page=page,
+            response = self._call(
+                lambda: self.newsapi.get_everything(
+                    q=q,
+                    sources=sources_param,
+                    language=self.language,
+                    sort_by=sort_by,
+                    page_size=page_size,
+                    page=page,
+                )
             )
             articles += self._to_articles(response, first_id=len(articles))
         return articles
@@ -51,18 +60,30 @@ class NewsAPIProvider(NewsProvider):
         page_size: int = DEFAULT_PAGE_SIZE,
         page: int = 1,
     ) -> list[Article]:
-        response = self.newsapi.get_top_headlines(
-            language=self.language,
-            country=self.country,
-            page_size=page_size,
-            page=page,
+        response = self._call(
+            lambda: self.newsapi.get_top_headlines(
+                language=self.language,
+                country=self.country,
+                page_size=page_size,
+                page=page,
+            )
         )
         return self._to_articles(response, first_id=0)
 
+    @staticmethod
+    def _call(request: Callable[[], dict]) -> dict:
+        """Run a NewsAPI call, raising :class:`NewsProviderError` on any failure."""
+        try:
+            response = request()
+        except NewsAPIException as e:
+            raise NewsProviderError(f"NewsAPI error: {e.get_message()}") from e
+        except requests.RequestException as e:
+            raise NewsProviderError(f"NewsAPI unreachable: {e}") from e
+        if response.get("status") != "ok":
+            raise NewsProviderError(f"NewsAPI error: {response.get('message')}")
+        return response
+
     def _to_articles(self, response: dict, first_id: int) -> list[Article]:
-        if response["status"] != "ok":
-            logger.error("Error fetching articles: %s", response.get("message"))
-            return []
         return [
             Article(
                 # ``id`` must be unique across the whole returned batch so the
