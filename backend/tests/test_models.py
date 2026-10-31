@@ -5,7 +5,14 @@ from datetime import datetime
 import pytest
 from pydantic import ValidationError
 
-from backend.models import Article, Profile, Source, SummarizeRequest, SummarizeResponse
+from backend.models import (
+    AnalyzeRequest,
+    Article,
+    ArticleAnalysis,
+    BiasAssessment,
+    Profile,
+    Source,
+)
 
 
 class TestArticle:
@@ -54,9 +61,9 @@ class TestProfile:
             Source(name="BBC", url="https://bbc.co.uk")
 
 
-class TestSummarizeSchemas:
-    def test_summarize_request_wraps_articles(self):
-        req = SummarizeRequest(
+class TestAnalysisSchemas:
+    def test_analyze_request_wraps_articles(self):
+        req = AnalyzeRequest(
             articles=[
                 {
                     "id": 1,
@@ -70,16 +77,21 @@ class TestSummarizeSchemas:
         assert len(req.articles) == 1
         assert isinstance(req.articles[0], Article)
 
-    def test_summarize_response_defaults(self):
-        resp = SummarizeResponse(summaries=["a", "b"])
-        assert resp.summaries == ["a", "b"]
-        assert resp.synthesis is None
-        assert resp.tags is None
+    def test_analyze_request_rejects_empty_list(self):
+        with pytest.raises(ValidationError):
+            AnalyzeRequest(articles=[])
 
-    def test_summarize_response_tags_shape(self):
-        resp = SummarizeResponse(
-            summaries=["a"],
-            synthesis="synth",
-            tags={1: ("Political", "leans left")},
-        )
-        assert resp.tags[1] == ("Political", "leans left")
+    def test_analysis_completeness(self):
+        assert not ArticleAnalysis().is_complete
+        assert not ArticleAnalysis(summary="s").is_complete
+        assert ArticleAnalysis(
+            summary="s", bias=BiasAssessment(label="None")
+        ).is_complete
+
+    def test_merged_with_fills_only_missing_fields(self):
+        mine = ArticleAnalysis(summary="mine")
+        other = ArticleAnalysis(summary="other", bias=BiasAssessment(label="X"))
+        merged = mine.merged_with(other)
+        assert merged.summary == "mine"
+        assert merged.bias.label == "X"
+        assert mine.merged_with(None) is mine

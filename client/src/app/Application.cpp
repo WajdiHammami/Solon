@@ -120,6 +120,20 @@ Application::Application(int argc, char* argv[]): QApplication(argc, argv), m_Ma
             font-size: 11px;
         }
 
+        QLabel#biasExplanation {
+            color: #a6adc8;
+            font-size: 11px;
+            font-style: italic;
+        }
+
+        QLabel#synthesisNotice {
+            background-color: #313244;
+            color: #f9e2af;
+            border-radius: 6px;
+            padding: 6px 8px;
+            font-size: 12px;
+        }
+
         QLabel#synthesisHeader {
             font-size: 13px;
             font-weight: bold;

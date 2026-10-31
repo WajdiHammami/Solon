@@ -8,6 +8,8 @@ set(CMAKE_AUTORCC ON)
 
 
 set(CMAKE_CXX_STANDARD 17)
+# Writes build/compile_commands.json so clangd/IDEs find the Qt headers.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Network Widgets)
 

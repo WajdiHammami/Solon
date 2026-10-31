@@ -78,15 +78,3 @@ class Profile(BaseModel):
 
 class AnalyzeRequest(BaseModel):
     articles: list[Article] = Field(min_length=1)
-
-
-class SummarizeRequest(AnalyzeRequest):
-    """Request body of the deprecated ``/summarize`` endpoint."""
-
-
-class SummarizeResponse(BaseModel):
-    """Response of the deprecated ``/summarize`` endpoint (batch case)."""
-
-    summaries: list[str]
-    synthesis: Optional[str] = None
-    tags: Optional[dict[int, tuple[str, str]]] = None  # article_id -> (tag, explanation)

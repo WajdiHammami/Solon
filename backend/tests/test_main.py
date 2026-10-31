@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from backend import main
 from backend.cache.memory import InMemoryAnalysisCache
-from backend.llm.errors import LLMAuthenticationError, LLMRateLimitError
+from backend.llm.errors import LLMRateLimitError
 from backend.main import app, get_article_workflow, get_batch_workflow, get_providers
 from backend.models import Article
 from backend.tests.conftest import ScriptedLLM
@@ -180,52 +180,6 @@ class TestAnalyze:
         client.post("/analyze/article", json=_article_payload(1))
         assert len(llm.requests) == calls
         assert fake_provider.extract_calls == ["https://example.com/1"]
-
-
-class TestLegacySummarize:
-    def test_single_article_returns_article(self, client):
-        resp = client.post("/summarize", json={"articles": [_article_payload(1)]})
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["id"] == 1
-        assert body["summary"] == "summary of t1"
-        assert body["tag"] == "Political"
-
-    def test_batch_returns_summaries_in_request_order(self, client):
-        resp = client.post(
-            "/summarize",
-            json={"articles": [_article_payload(2), _article_payload(1)]},
-        )
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["summaries"] == ["summary of t2", "summary of t1"]
-        assert body["synthesis"] == "synthesis text"
-        assert body["tags"]["1"] == ["Political", "Charged language."]
-
-    def test_batch_pads_missing_summaries(self, make_client):
-        llm = ScriptedLLM(fail={("summarize", "t1"): LLMRateLimitError("slow")})
-        client, _ = make_client(llm)
-        resp = client.post(
-            "/summarize",
-            json={"articles": [_article_payload(1), _article_payload(2)]},
-        )
-        assert resp.json()["summaries"] == ["", "summary of t2"]
-
-    def test_502_when_nothing_produced(self, make_client):
-        error = LLMAuthenticationError("bad key")
-        llm = ScriptedLLM(fail={("summarize", "*"): error, ("detect_bias", "*"): error})
-        client, _ = make_client(llm)
-        resp = client.post("/summarize", json={"articles": [_article_payload(1)]})
-        assert resp.status_code == 502
-        failures = resp.json()["detail"]["failures"]
-        assert {f["task"] for f in failures} == {"summarize", "detect_bias"}
-
-    def test_rejects_empty_list(self, client):
-        assert client.post("/summarize", json={"articles": []}).status_code == 422
-
-    def test_marked_deprecated(self, client):
-        schema = client.get("/openapi.json").json()
-        assert schema["paths"]["/summarize"]["post"]["deprecated"] is True
 
 
 def test_get_content(client):

@@ -5,7 +5,7 @@ import logging
 from contextlib import asynccontextmanager
 from functools import lru_cache
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI
 
 from backend.cache.base import AnalysisCache
 from backend.cache.memory import InMemoryAnalysisCache
@@ -18,9 +18,6 @@ from backend.models import (
     Article,
     ArticleResult,
     BatchAnalysis,
-    SummarizeRequest,
-    SummarizeResponse,
-    TaskFailure,
 )
 from backend.news_providers.base import NewsProvider
 from backend.news_providers.newsapi_provider import NewsAPIProvider
@@ -132,54 +129,6 @@ async def analyze_article(
 ) -> ArticleResult:
     """Summarize and bias-tag one article; partial failures are reported."""
     return await workflow.run(article)
-
-
-@app.post("/summarize", deprecated=True)
-async def summarize(
-    request: SummarizeRequest,
-    article_workflow: ArticleWorkflow = Depends(get_article_workflow),
-    batch_workflow: BatchWorkflow = Depends(get_batch_workflow),
-) -> SummarizeResponse | Article:
-    """Legacy shape kept for the current client; use ``/analyze`` instead.
-
-    One article returns the :class:`Article` with ``summary``/``tag`` set;
-    several return a :class:`SummarizeResponse` with summaries in request
-    order (``""`` where unavailable). Responds 502 when nothing was produced.
-    """
-    if len(request.articles) == 1:
-        article = request.articles[0]
-        result = await article_workflow.run(article)
-        analysis = result.analysis
-        if analysis.summary is None and analysis.bias is None:
-            raise _all_failed(result.failures)
-        return article.model_copy(
-            update={
-                "summary": analysis.summary,
-                "tag": analysis.bias.label if analysis.bias else article.tag,
-            }
-        )
-
-    batch = await batch_workflow.run(request.articles)
-    if not batch.analyses and batch.failed:
-        raise _all_failed(batch.failed)
-    summaries = []
-    tags = {}
-    for article in request.articles:
-        analysis = batch.analyses.get(article.id)
-        summaries.append((analysis.summary or "") if analysis else "")
-        if analysis and analysis.bias:
-            tags[article.id] = (analysis.bias.label, analysis.bias.explanation or "")
-    return SummarizeResponse(summaries=summaries, synthesis=batch.synthesis, tags=tags)
-
-
-def _all_failed(failures: list[TaskFailure]) -> HTTPException:
-    return HTTPException(
-        status_code=502,
-        detail={
-            "message": "Analysis failed",
-            "failures": [f.model_dump() for f in failures],
-        },
-    )
 
 
 @app.get("/article/content")

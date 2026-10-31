@@ -7,9 +7,10 @@
 #include <QProgressBar>
 #include <QLineEdit>
 #include <QStatusBar>
+#include "models/Analysis.h"
+#include "network/ApiClient.h"
 
 
-class ApiClient;
 class ArticleListModel;
 class ArticleDetailView;
 class QListView;
@@ -23,6 +24,18 @@ public:
 private:
     void setupUI();
     void setupConnections();
+
+    void onBatchAnalysis(const BatchAnalysis& batch);
+    void onArticleAnalysis(int articleId, const ArticleAnalysis& analysis, const QList<TaskFailure>& failures);
+    void onContent(const QString& url, const QString& content);
+    void onError(ApiClient::Request request, const QString& message);
+
+    // Progress bar stays visible while any request is in flight.
+    void beginRequest(const QString& status);
+    void endRequest();
+    void refreshDetailView(int articleId);
+    QString describeFailure(const TaskFailure& failure) const;
+
     ApiClient* m_apiClient;
     ArticleListModel* m_articleListModel;
     QLineEdit* m_searchBar;
@@ -35,4 +48,6 @@ private:
     ArticleDetailView* m_detailView;
     QSplitter* m_synthesisSpliter;
     SynthesisView* m_synthesisView;
+    int m_pendingRequests = 0;
+    bool m_batchInFlight = false;
 };

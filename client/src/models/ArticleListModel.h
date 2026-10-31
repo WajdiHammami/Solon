@@ -3,7 +3,9 @@
 
 #include <QAbstractListModel>
 #include <QList>
+#include <optional>
 #include "Article.h"
+#include "Analysis.h"
 
 
 class ArticleListModel : public QAbstractListModel{
@@ -14,20 +16,26 @@ public:
     QVariant data(const QModelIndex& index, int role=Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
     Article articleAt(int row) const;
-    QList<Article> allArticles();
+    const QList<Article>& allArticles() const;
+    std::optional<Article> articleById(int id) const;
+
+    // In-place updates; return false when no article matches.
+    bool applyAnalysis(int articleId, const ArticleAnalysis& analysis);
+    bool setContent(const QString& url, const QString& content);
 public slots:
     void setArticles(const QList<Article>& articles);
 
 private:
+    int rowForId(int id) const;
     QList<Article> m_articles;
-    
+
     enum ArticleRole {
         TitleRole = Qt::UserRole + 1,
         SourceRole,
         UrlRole,
         PublishedAtRole,
-        SummaryRole
+        SummaryRole,
+        TagRole
 };
 };
-
 

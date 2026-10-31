@@ -5,7 +5,6 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
-#include "network/ApiClient.h"
 #include <QDialog>
 #include <QTextEdit>
 
@@ -16,6 +15,7 @@ ArticleDetailView::ArticleDetailView(QWidget* parent)
       m_date(new QLabel(this)),
       m_summary(new QLabel(this)),
       m_biasTag(new QLabel(this)),
+      m_biasExplanation(new QLabel(this)),
       m_readButton(new QPushButton("Read Full Article", this)),
       m_summarizeButton(new QPushButton("Summarize", this)) {
 
@@ -29,6 +29,9 @@ ArticleDetailView::ArticleDetailView(QWidget* parent)
     m_biasTag->setObjectName("biasTag");
 
     m_biasTag->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    m_biasExplanation->setObjectName("biasExplanation");
+    m_biasExplanation->setWordWrap(true);
+    m_biasExplanation->hide();
     m_summary->setWordWrap(true);
     QVBoxLayout* layout = new QVBoxLayout(this);
     layout->setContentsMargins(16, 16, 16, 16);
@@ -48,6 +51,7 @@ ArticleDetailView::ArticleDetailView(QWidget* parent)
     headerLayout->addLayout(infoLayout);
 
     layout->addLayout(headerLayout);
+    layout->addWidget(m_biasExplanation);
     layout->addSpacing(8);
     layout->addWidget(m_summary);
     layout->addStretch();
@@ -94,9 +98,13 @@ void ArticleDetailView::setArticle(const Article& article) {
     }
     if (article.tag.isEmpty()) {
         m_biasTag->setText("No bias tag available.");
+    } else if (article.tag == "None") {
+        m_biasTag->setText("No notable bias");
     } else {
         m_biasTag->setText(article.tag);
     }
+    m_biasExplanation->setText(article.tag_explanation);
+    m_biasExplanation->setVisible(!article.tag_explanation.isEmpty());
     m_article = article;
     
     if(m_article.summary.isEmpty()){
@@ -108,8 +116,13 @@ void ArticleDetailView::setArticle(const Article& article) {
 }
 
 
-Article *ArticleDetailView::getArticle(){
-    return &m_article;
+const Article& ArticleDetailView::article() const {
+    return m_article;
+}
+
+
+bool ArticleDetailView::hasArticle() const {
+    return m_article.id >= 0;
 }
 
 

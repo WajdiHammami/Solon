@@ -18,6 +18,7 @@ QVariant ArticleListModel::data(const QModelIndex& index, int role) const {
         case UrlRole:         return m_articles.at(index.row()).url;
         case PublishedAtRole: return m_articles.at(index.row()).published_at;
         case SummaryRole:     return m_articles.at(index.row()).summary;
+        case TagRole:         return m_articles.at(index.row()).tag;
         default:              return {};
     }
 }
@@ -29,7 +30,8 @@ QHash<int, QByteArray> ArticleListModel::roleNames() const{
         {SourceRole,      "source"},
         {UrlRole,         "url"},
         {PublishedAtRole, "publishedAt"},
-        {SummaryRole,     "summary"}
+        {SummaryRole,     "summary"},
+        {TagRole,         "tag"}
         };
 }
 
@@ -48,6 +50,49 @@ Article ArticleListModel::articleAt(int row) const {
 
 
 
-QList<Article> ArticleListModel::allArticles(){
+const QList<Article>& ArticleListModel::allArticles() const {
     return m_articles;
+}
+
+
+std::optional<Article> ArticleListModel::articleById(int id) const {
+    int row = rowForId(id);
+    if (row < 0) return std::nullopt;
+    return m_articles.at(row);
+}
+
+
+bool ArticleListModel::applyAnalysis(int articleId, const ArticleAnalysis& analysis){
+    int row = rowForId(articleId);
+    if (row < 0) return false;
+
+    // Only overwrite what the analysis actually produced; keep the rest.
+    Article& article = m_articles[row];
+    if (!analysis.summary.isEmpty()) article.summary = analysis.summary;
+    if (!analysis.biasLabel.isEmpty()) {
+        article.tag = analysis.biasLabel;
+        article.tag_explanation = analysis.biasExplanation;
+    }
+    emit dataChanged(index(row), index(row), {SummaryRole, TagRole});
+    return true;
+}
+
+
+bool ArticleListModel::setContent(const QString& url, const QString& content){
+    bool found = false;
+    for (Article& article : m_articles) {
+        if (article.url == url) {
+            article.content = content;
+            found = true;
+        }
+    }
+    return found;
+}
+
+
+int ArticleListModel::rowForId(int id) const {
+    for (int row = 0; row < m_articles.size(); ++row) {
+        if (m_articles.at(row).id == id) return row;
+    }
+    return -1;
 }

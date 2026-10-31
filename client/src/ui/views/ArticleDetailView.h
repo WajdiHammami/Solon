@@ -13,7 +13,8 @@ class ArticleDetailView : public QWidget {
 public:
     explicit ArticleDetailView(QWidget* parent=nullptr);
     void setArticle(const Article& article);
-    Article* getArticle();
+    const Article& article() const;
+    bool hasArticle() const;
     void showContent(const QString& content);
 
 signals:
@@ -26,6 +27,7 @@ private:
     QLabel* m_date;
     QLabel* m_summary;
     QLabel* m_biasTag;
+    QLabel* m_biasExplanation;
 
     Article m_article;
 

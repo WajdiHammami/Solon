@@ -6,26 +6,41 @@
 #include <QUrl>
 #include <QJsonObject>
 #include <QList>
+#include <functional>
 #include "models/Article.h"
-#include <QMap>
-#include <QPair>
+#include "models/Analysis.h"
 
+class QNetworkReply;
 
 class ApiClient: public QObject {
     Q_OBJECT
 public:
+    enum class Request { Feed, Analyze, AnalyzeArticle, Content };
+
     explicit ApiClient(QObject* parent=nullptr);
     void fetchFeed(const QString& topic, int pageSize, int page);
-    void summarizeRequest(const QList<Article>& articles);
+    void analyzeArticles(const QList<Article>& articles);
+    void analyzeArticle(const Article& article);
     void contentRequest(const QString& url);
 signals:
-    void summarizationOneArticleReceived(const Article& article);
-    void summarizationMultiArticleReceived(const QList<QString>& summaries, const QString& synthesis, const QMap<int, QPair<QString, QString>>& tags);
     void feedReceived(const QList<Article>& articles);
-    void errorOccurred(const QString& message);
-    void contentReceived(const QString& content);
+    void batchAnalysisReceived(const BatchAnalysis& batch);
+    void articleAnalysisReceived(int articleId, const ArticleAnalysis& analysis, const QList<TaskFailure>& failures);
+    void contentReceived(const QString& url, const QString& content);
+    // Emitted for every failed request (network, HTTP or malformed response).
+    void errorOccurred(ApiClient::Request request, const QString& message);
 private:
-    Article parseArticle(const QJsonObject& articles);
+    QNetworkReply* postJson(const QString& path, const QJsonObject& body, int timeoutMs);
+    // Calls onSuccess with the body, or emits errorOccurred; always frees the reply.
+    void handleReply(QNetworkReply* reply, Request request, std::function<void(const QByteArray&)> onSuccess);
+    bool parseJson(Request request, const QByteArray& body, QJsonDocument& doc);
+
+    static QJsonObject toJson(const Article& article);
+    static Article parseArticle(const QJsonObject& object);
+    static ArticleAnalysis parseAnalysis(const QJsonObject& object);
+    static TaskFailure parseFailure(const QJsonObject& object);
+    static QString errorMessage(QNetworkReply* reply, const QByteArray& body);
+
     QNetworkAccessManager* m_network;
     QUrl m_baseUrl;
 

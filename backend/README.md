@@ -53,7 +53,6 @@ uvicorn backend.main:app --reload
 | GET | `/feed` | Fetch articles (`topic`, `page_size`, `page`) |
 | POST | `/analyze` | Analyze articles + synthesize → `BatchAnalysis` |
 | POST | `/analyze/article` | Summarize and bias-tag one article → `ArticleResult` |
-| POST | `/summarize` | **Deprecated** legacy shape for the current client; use `/analyze` |
 | GET | `/article/content` | Scrape full article text for a `url` |
 
 `BatchAnalysis` contains `analyses` (keyed by article id), `synthesis`,
