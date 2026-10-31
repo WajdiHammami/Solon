@@ -2,7 +2,7 @@
 
 **A desktop news aggregation and analysis app** — Solon fetches articles from multiple news sources, summarizes them with an LLM, detects media bias, and generates a cross-source synthesis, all from a native desktop UI.
 
-Built with a **C++/Qt6** desktop client and a **Python/FastAPI** backend driving a **LangGraph** summarization pipeline.
+Built with a **C++/Qt6** desktop client and a **Python/FastAPI** backend driving **LangGraph** analysis workflows.
 
 > 🚧 **Status: work in progress.** The core aggregation, summarization, bias-detection, and synthesis flow works end to end. The project is under active development — see the [roadmap](#roadmap) for what's next.
 
@@ -32,24 +32,26 @@ Reading five articles about the same event leaves you with five partial pictures
 ## Architecture
 
 ```
-┌─────────────────────────────────┐          ┌──────────────────────────────────┐
-│         Qt6 Desktop Client       │          │          FastAPI Backend          │
-│                                  │          │                                   │
-│  MainWindow                      │          │  GET  /health                     │
-│  ├── ArticleListModel (MVC)      │  HTTP    │  GET  /feed                       │
-│  ├── ArticleDetailView           │◄───────► │  POST /summarize                  │
-│  └── SynthesisView               │  (JSON)  │  GET  /article/content            │
-│                                  │          │                                   │
-│  ApiClient (QNetworkAccessManager)          │  SummarizationPipeline (LangGraph)│
-│                                  │          │  ├── summarize_article (parallel) │
-│                                  │          │  ├── bias_detection   (parallel)  │
-│                                  │          │  └── synthesize                   │
-└─────────────────────────────────┘          └──────────────────────────────────┘
+┌──────────────────────────────────┐          ┌──────────────────────────────────────┐
+│         Qt6 Desktop Client        │          │            FastAPI Backend            │
+│                                   │          │                                       │
+│  MainWindow                       │          │  GET  /health                         │
+│  ├── ArticleListModel (MVC)       │  HTTP    │  GET  /feed                           │
+│  ├── ArticleDetailView            │◄───────► │  POST /analyze  · /analyze/article    │
+│  └── SynthesisView                │  (JSON)  │  GET  /article/content                │
+│                                   │          │                                       │
+│  ApiClient (QNetworkAccessManager)│          │  BatchWorkflow (LangGraph)            │
+│                                   │          │  ├── plan (cache + token budget)      │
+│                                   │          │  ├── ArticleWorkflow per article      │
+│                                   │          │  │   └── summarize ∥ detect_bias      │
+│                                   │          │  └── synthesize                       │
+│                                   │          │  LLMClient → Groq | Azure OpenAI      │
+└──────────────────────────────────┘          └──────────────────────────────────────┘
 ```
 
 **Client.** MVC throughout. `ApiClient` owns all HTTP communication and emits Qt signals when responses arrive. `ArticleListModel` adapts the article list for `QListView`. Views are decoupled from the network layer — they emit intent signals, and `MainWindow` wires those to `ApiClient`.
 
-**Backend.** A LangGraph pipeline fans out summarization and bias detection in parallel for every article, then synthesizes the results into a single cross-source analysis. News sources sit behind a `NewsProvider` interface so additional providers can be added without touching the pipeline. Configuration and secrets are loaded from the environment via `pydantic-settings`.
+**Backend.** LangGraph workflows analyze each article (summary and bias detection in parallel) and synthesize the results into a single cross-source analysis. Work that is already known — from the request or the analysis cache — is never redone, a token budget drops the lowest-priority articles before any LLM call, and failures are reported per task instead of failing the batch. LLMs sit behind a provider-agnostic `LLMClient` interface (Groq or Azure OpenAI), and news sources behind a `NewsProvider` interface, so either can be swapped without touching the workflows. Configuration and secrets are loaded from the environment via `pydantic-settings`.
 
 ---
 
@@ -59,8 +61,8 @@ Reading five articles about the same event leaves you with five partial pictures
 |---|---|
 | Desktop client | C++17 · Qt6 (Widgets, Network, Core) · CMake |
 | Backend API | Python · FastAPI · Uvicorn |
-| LLM orchestration | LangGraph · LangChain |
-| LLM | Llama 3.3 70B via Groq |
+| LLM orchestration | LangGraph |
+| LLM | Groq (default `openai/gpt-oss-120b`) or Azure OpenAI, via the official SDKs |
 | Config & models | pydantic · pydantic-settings |
 | News source | NewsAPI |
 | Content extraction | newspaper3k |
@@ -131,7 +133,9 @@ solon/
 │   ├── models.py                   # Pydantic models
 │   ├── profile.py                  # Profile loading/validation
 │   ├── news_providers/             # News source adapters (NewsProvider interface)
-│   ├── summarization/              # LangGraph pipeline (state + graph)
+│   ├── llm/                        # LLMClient interface + Groq / Azure clients
+│   ├── workflows/                  # LangGraph workflows, tasks, prompts, budget
+│   ├── cache/                      # Analysis cache (in-memory; DB later)
 │   ├── profiles/                   # Source/topic profiles
 │   └── tests/                      # pytest suite
 └── client/

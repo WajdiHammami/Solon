@@ -14,6 +14,7 @@ other task's result is still returned and cached.
 
 import logging
 import operator
+from collections.abc import Awaitable, Callable
 from typing import Annotated, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -42,11 +43,33 @@ class ArticleState(TypedDict, total=False):
     failures: Annotated[list[TaskFailure], operator.add]
 
 
+#: Fetches an article's full text by URL; returns "" when it can't.
+ContentLoader = Callable[[str], Awaitable[str]]
+
+
 class ArticleWorkflow:
-    def __init__(self, llm: LLMClient, cache: AnalysisCache | None = None):
+    """
+    :param content_loader: when set, articles that still need LLM work and
+        have less than ``min_content_chars`` of text are scraped first.
+    """
+
+    def __init__(
+        self,
+        llm: LLMClient,
+        cache: AnalysisCache | None = None,
+        content_loader: ContentLoader | None = None,
+        min_content_chars: int = 600,
+    ):
         self._llm = llm
         self._cache = cache
+        self._content_loader = content_loader
+        self._min_content_chars = min_content_chars
         self.graph = self._build_graph()
+
+    @property
+    def fetches_content_below(self) -> int:
+        """Content length under which articles are scraped (0 = never)."""
+        return self._min_content_chars if self._content_loader else 0
 
     async def run(
         self, article: Article, known: ArticleAnalysis | None = None
@@ -97,7 +120,23 @@ class ArticleWorkflow:
             "known" if known.summary is not None else "missing",
             "known" if known.bias is not None else "missing",
         )
-        return {"summary": known.summary, "bias": known.bias}
+        if not known.is_complete:
+            article = await self._ensure_content(article)
+        return {"article": article, "summary": known.summary, "bias": known.bias}
+
+    async def _ensure_content(self, article: Article) -> Article:
+        """Scrape full text for an article with too little content to analyze.
+
+        Keeps the existing (snippet) content when scraping yields nothing.
+        """
+        if len(article.content or "") >= self.fetches_content_below:
+            return article
+        scraped = await self._content_loader(article.url)
+        if not scraped:
+            logger.info("No content scraped for %s; using snippet", article.url)
+            return article
+        logger.debug("Scraped %d chars for %s", len(scraped), article.url)
+        return article.model_copy(update={"content": scraped})
 
     @staticmethod
     def _route_missing(state: ArticleState) -> list[str]:

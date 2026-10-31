@@ -7,6 +7,7 @@ for the variables this expects.
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -20,6 +21,7 @@ class Settings(BaseSettings):
     """Runtime settings, populated from environment variables / ``.env``."""
 
     newsapi_key: str = ""
+    llm_provider: Literal["groq", "azure"] = "groq"
     groq_api_key: str = ""
     groq_model: str = "openai/gpt-oss-120b"
     azure_openai_endpoint: str = ""
@@ -35,6 +37,8 @@ class Settings(BaseSettings):
     # Batch analysis limits; see ``backend.workflows.batch_workflow``.
     batch_max_tokens: int = 100_000
     batch_max_concurrency: int = 4
+    # Articles with less text than this are scraped before analysis.
+    min_content_chars: int = 600
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

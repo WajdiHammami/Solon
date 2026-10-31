@@ -3,87 +3,15 @@
 The LLM is a scripted in-memory :class:`LLMClient`; nothing hits the network.
 """
 
-import json
-
 import pytest
 
 from backend.cache.memory import InMemoryAnalysisCache
-from backend.llm.base import LLMClient
 from backend.llm.errors import LLMAuthenticationError, LLMInvalidOutputError, LLMRateLimitError
-from backend.llm.models import GenerationResponse, LLMConfig
 from backend.models import ArticleAnalysis, BiasAssessment
-from backend.workflows import prompts, tasks
+from backend.tests.conftest import ScriptedLLM
+from backend.workflows import tasks
 from backend.workflows.article_workflow import ArticleWorkflow
 from backend.workflows.batch_workflow import BatchWorkflow
-
-BIAS_JSON = json.dumps({"label": "Political", "explanation": "Charged language."})
-
-
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
-class ScriptedLLM(LLMClient):
-    """Answers by task (recognised from the system prompt) and records calls.
-
-    ``fail`` maps ``(task, article title)`` to an error to raise instead;
-    use ``"*"`` as the title to fail that task for every article.
-    """
-
-    def __init__(self, bias_reply=BIAS_JSON, fail=None):
-        self.bias_reply = bias_reply
-        self.fail = fail or {}
-        self.requests = []
-
-    @property
-    def config(self):
-        return LLMConfig(model="scripted")
-
-    def task_calls(self, task):
-        return [r for r in self.requests if self._task(r) == task]
-
-    @staticmethod
-    def _task(request):
-        system = request.messages[0].content
-        if system == prompts.BIAS_SYSTEM:
-            return "detect_bias"
-        if system == prompts.SYNTHESIZE_SYSTEM:
-            return "synthesize"
-        return "summarize"
-
-    @staticmethod
-    def _title(request):
-        body = request.messages[1].content
-        return body.split("Title: ")[1].split("\n")[0] if "Title: " in body else ""
-
-    def invoke(self, request):
-        self.requests.append(request)
-        task, title = self._task(request), self._title(request)
-        error = self.fail.get((task, title)) or self.fail.get((task, "*"))
-        if error:
-            raise error
-        if task == "detect_bias":
-            content = self.bias_reply
-        elif task == "synthesize":
-            content = "synthesis text"
-        else:
-            content = f"summary of {title}"
-        return GenerationResponse(content=content, model="scripted")
-
-    async def ainvoke(self, request):
-        return self.invoke(request)
-
-    def stream(self, request):
-        yield self.invoke(request).content
-
-    async def astream(self, request):
-        yield self.invoke(request).content
-
-
-@pytest.fixture
-def llm():
-    return ScriptedLLM()
 
 
 @pytest.fixture
@@ -249,7 +177,7 @@ class TestBatchWorkflow:
         await workflow.run(articles)
         llm.requests.clear()
         await workflow.run(articles)
-        assert [ScriptedLLM._task(r) for r in llm.requests] == ["synthesize"]
+        assert [ScriptedLLM.task_of(r) for r in llm.requests] == ["synthesize"]
 
     async def test_empty_batch(self, llm):
         result = await self._workflow(llm).run([])
@@ -333,3 +261,61 @@ class TestBatchWorkflow:
         articles = [make_article(i) for i in range(6)]
         await self._workflow(llm, max_concurrency=2).run(articles)
         assert peak <= 4  # 2 articles at once, each with summary ∥ bias
+
+
+class TestContentLoading:
+    def _loader(self, text="Full scraped body. " * 50):
+        calls = []
+
+        async def load(url):
+            calls.append(url)
+            return text
+
+        return load, calls
+
+    def _sent_content(self, llm):
+        return llm.task_calls("summarize")[0].messages[1].content
+
+    async def test_scrapes_short_content_before_analysis(self, llm, make_article):
+        load, calls = self._loader()
+        workflow = ArticleWorkflow(llm, content_loader=load, min_content_chars=600)
+        await workflow.run(make_article(1, content="short snippet"))
+        assert calls == ["https://example.com/1"]
+        assert "Full scraped body." in self._sent_content(llm)
+
+    async def test_keeps_long_content(self, llm, make_article):
+        load, calls = self._loader()
+        workflow = ArticleWorkflow(llm, content_loader=load, min_content_chars=600)
+        await workflow.run(make_article(1, content="y" * 700))
+        assert calls == []
+
+    async def test_falls_back_to_snippet_when_scrape_empty(self, llm, make_article):
+        load, _ = self._loader(text="")
+        workflow = ArticleWorkflow(llm, content_loader=load, min_content_chars=600)
+        await workflow.run(make_article(1, content="short snippet"))
+        assert "short snippet" in self._sent_content(llm)
+
+    async def test_no_scrape_when_analysis_already_known(self, llm, cache, make_article):
+        article = make_article(1)
+        await cache.put(
+            article.url,
+            ArticleAnalysis(summary="s", bias=BiasAssessment(label="None")),
+        )
+        load, calls = self._loader()
+        await ArticleWorkflow(llm, cache, content_loader=load).run(article)
+        assert calls == []
+
+    async def test_batch_skipped_articles_are_never_scraped(self, llm, make_article):
+        load, calls = self._loader()
+        article_workflow = ArticleWorkflow(llm, content_loader=load)
+        # Content to be scraped is budgeted at the cap (~3k tokens per call).
+        workflow = BatchWorkflow(llm, article_workflow, max_tokens=10_000)
+        result = await workflow.run([make_article(i) for i in range(3)])
+        assert result.skipped == [1, 2]
+        assert calls == ["https://example.com/0"]
+
+
+async def test_prompt_content_is_capped(llm, make_article):
+    await tasks.summarize(llm, make_article(content="@" * (tasks.MAX_CONTENT_CHARS + 500)))
+    sent = llm.requests[0].messages[1].content
+    assert sent.count("@") == tasks.MAX_CONTENT_CHARS

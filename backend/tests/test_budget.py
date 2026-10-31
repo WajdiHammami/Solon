@@ -45,3 +45,20 @@ def test_once_exhausted_cheaper_later_articles_do_not_jump_the_queue(make_articl
     plan = plan_batch(articles, {a.id: NOTHING for a in articles}, max_tokens=7000)  # 0 and 2 would both fit
     assert [a.id for a in plan.selected] == [0]
     assert [a.id for a in plan.skipped] == [1, 2]
+
+
+def test_content_to_be_scraped_is_budgeted_at_the_cap(make_article):
+    snippet = make_article(content="short")
+    assert budget.estimate_content_tokens(snippet) == 2
+    assert (
+        budget.estimate_content_tokens(snippet, fetch_below=600)
+        == budget.MAX_CONTENT_CHARS // budget.CHARS_PER_TOKEN
+    )
+
+
+def test_content_estimate_never_exceeds_the_cap(make_article):
+    huge = make_article(content="x" * 100_000)
+    assert (
+        budget.estimate_content_tokens(huge)
+        == budget.MAX_CONTENT_CHARS // budget.CHARS_PER_TOKEN
+    )

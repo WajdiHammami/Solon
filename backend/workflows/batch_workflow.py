@@ -107,7 +107,13 @@ class BatchWorkflow:
             *(self._article_workflow.resolve_known(a) for a in articles)
         )
         known = {a.id: k for a, k in zip(articles, resolved)}
-        plan = plan_batch(articles, known, self._max_tokens, self._prioritize)
+        plan = plan_batch(
+            articles,
+            known,
+            self._max_tokens,
+            self._prioritize,
+            fetch_below=self._article_workflow.fetches_content_below,
+        )
         logger.info(
             "Batch plan: %d articles, %d selected, %d skipped, ~%d tokens (budget %s)",
             len(articles),

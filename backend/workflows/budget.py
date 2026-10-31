@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from backend.models import Article, ArticleAnalysis
+from backend.workflows.tasks import MAX_CONTENT_CHARS
 
 CHARS_PER_TOKEN = 4
 PROMPT_OVERHEAD_TOKENS = 200  # system prompt + instructions per call
@@ -31,12 +32,26 @@ def estimate_text_tokens(text: str | None) -> int:
     return math.ceil(len(text or "") / CHARS_PER_TOKEN)
 
 
-def estimate_article_tokens(article: Article, known: ArticleAnalysis) -> int:
+def estimate_content_tokens(article: Article, fetch_below: int = 0) -> int:
+    """Tokens of article text a task will send.
+
+    Content shorter than ``fetch_below`` will be scraped before analysis and
+    its real length is unknown at planning time, so the cap is assumed.
+    """
+    length = len(article.content or "")
+    if length < fetch_below:
+        length = MAX_CONTENT_CHARS
+    return math.ceil(min(length, MAX_CONTENT_CHARS) / CHARS_PER_TOKEN)
+
+
+def estimate_article_tokens(
+    article: Article, known: ArticleAnalysis, fetch_below: int = 0
+) -> int:
     """Tokens needed to compute whatever ``known`` is still missing."""
     input_tokens = (
         PROMPT_OVERHEAD_TOKENS
         + estimate_text_tokens(article.title)
-        + estimate_text_tokens(article.content)
+        + estimate_content_tokens(article, fetch_below)
     )
     total = 0
     if known.summary is None:
@@ -62,6 +77,7 @@ def plan_batch(
     known: dict[int, ArticleAnalysis],
     max_tokens: int | None,
     prioritize: Prioritizer = keep_order,
+    fetch_below: int = 0,
 ) -> BudgetPlan:
     """Select articles in priority order until ``max_tokens`` would be exceeded.
 
@@ -74,7 +90,7 @@ def plan_batch(
     plan = BudgetPlan(estimated_tokens=synthesis_base_tokens())
     exhausted = False
     for article in prioritize(articles):
-        analysis_cost = estimate_article_tokens(article, known[article.id])
+        analysis_cost = estimate_article_tokens(article, known[article.id], fetch_below)
         cost = analysis_cost + SYNTHESIS_PER_ARTICLE_TOKENS
         fits = max_tokens is None or plan.estimated_tokens + cost <= max_tokens
         if fits and (analysis_cost == 0 or not exhausted):

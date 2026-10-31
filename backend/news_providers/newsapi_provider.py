@@ -43,7 +43,7 @@ class NewsAPIProvider(NewsProvider):
 
             for raw in response["articles"]:
                 # ``id`` must be unique across the whole returned batch so the
-                # summarization pipeline can key tags by article id.
+                # analysis workflows can key results by article id.
                 articles.append(
                     Article(
                         id=len(articles),

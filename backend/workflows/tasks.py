@@ -11,6 +11,14 @@ from backend.llm.models import GenerationRequest, Message, Role
 from backend.models import Article, BiasAssessment
 from backend.workflows import prompts
 
+#: Article text beyond this is cut before prompting. Bounds per-call tokens
+#: (~3k) so one very long article can't blow the budget or the rate limit.
+MAX_CONTENT_CHARS = 12_000
+
+
+def _content(article: Article) -> str:
+    return (article.content or "")[:MAX_CONTENT_CHARS]
+
 
 async def summarize(llm: LLMClient, article: Article) -> str:
     response = await llm.ainvoke(
@@ -22,7 +30,7 @@ async def summarize(llm: LLMClient, article: Article) -> str:
                     content=prompts.SUMMARIZE.format(
                         title=article.title,
                         source=article.source_name,
-                        content=article.content or "",
+                        content=_content(article),
                     ),
                 ),
             ]
@@ -42,7 +50,7 @@ async def detect_bias(llm: LLMClient, article: Article) -> BiasAssessment:
                         title=article.title,
                         source=article.source_name,
                         url=article.url,
-                        content=article.content or "",
+                        content=_content(article),
                     ),
                 ),
             ],
