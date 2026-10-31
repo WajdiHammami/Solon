@@ -18,6 +18,7 @@ public:
     enum class Request { Feed, Analyze, AnalyzeArticle, Content };
 
     explicit ApiClient(QObject* parent=nullptr);
+    void setBaseUrl(const QUrl& baseUrl);
     void fetchFeed(const QString& topic, int pageSize, int page);
     void analyzeArticles(const QList<Article>& articles);
     void analyzeArticle(const Article& article);

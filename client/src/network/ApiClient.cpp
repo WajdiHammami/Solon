@@ -28,6 +28,10 @@ QNetworkRequest makeRequest(const QUrl& url, int timeoutMs){
 
 ApiClient::ApiClient(QObject* parent): QObject(parent), m_network(new QNetworkAccessManager(this)), m_baseUrl("http://localhost:8000"){}
 
+void ApiClient::setBaseUrl(const QUrl& baseUrl){
+    m_baseUrl = baseUrl;
+}
+
 void ApiClient::fetchFeed(const QString& topic, int pageSize, int page){
     QUrl url(m_baseUrl);
     QUrlQuery query;

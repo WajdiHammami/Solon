@@ -10,13 +10,13 @@
 #include <QStyle>
 #include "ui/views/ArticleDetailView.h"
 #include "ui/views/SynthesisView.h"
+#include "ui/dialogs/SettingsDialog.h"
+#include "ui/Icons.h"
+#include "app/ClientSettings.h"
 
-namespace {
-constexpr int kFeedPageSize = 5;  // matches the backend's /feed default
-}
 
-
-MainWindow::MainWindow(QWidget* parent): QMainWindow(parent), m_apiClient(new ApiClient(this)), m_articleListModel(new ArticleListModel(this)){
+MainWindow::MainWindow(QWidget* parent): QMainWindow(parent), m_settings(new ClientSettings(this)), m_apiClient(new ApiClient(this)), m_articleListModel(new ArticleListModel(this)){
+    m_apiClient->setBaseUrl(m_settings->serverUrl());
 
    setupUI();
    setupConnections();
@@ -29,7 +29,12 @@ void MainWindow::setupUI(){
     resize(1200, 800);
 
     QToolBar* toolbar = new QToolBar(this);
+    toolbar->setMovable(false);
+    toolbar->setIconSize(QSize(22, 22));
     this->addToolBar(Qt::LeftToolBarArea, toolbar);
+    QAction* settingsAction = toolbar->addAction(Icons::settings(QColor("#cdd6f4")), "Settings");
+    settingsAction->setToolTip("Settings — server and request parameters");
+    connect(settingsAction, &QAction::triggered, this, &MainWindow::openSettings);
 
     // Create the container widget
     QWidget* centralWidget = new QWidget(this);
@@ -84,7 +89,7 @@ void MainWindow::setupConnections(){
     connect(m_searchButton, &QPushButton::clicked, this, [this](){
         if (m_feedInFlight) return;
         const QString topic = m_searchBar->text().trimmed();
-        m_apiClient->fetchFeed(topic, kFeedPageSize, 1);
+        m_apiClient->fetchFeed(topic, m_settings->pageSize(), m_settings->page());
         m_feedInFlight = true;
         m_searchButton->setEnabled(false);
         beginRequest(topic.isEmpty() ? "Loading top headlines..." : QString("Searching \"%1\"...").arg(topic));
@@ -134,6 +139,21 @@ void MainWindow::setupConnections(){
     connect(m_apiClient, &ApiClient::contentReceived, this, &MainWindow::onContent);
 
     connect(m_apiClient, &ApiClient::errorOccurred, this, &MainWindow::onError);
+
+    connect(m_settings, &ClientSettings::changed, this, [this](){
+        m_apiClient->setBaseUrl(m_settings->serverUrl());
+        showStatus(QString("Settings saved — %1 articles per page, page %2, server %3")
+            .arg(m_settings->pageSize()).arg(m_settings->page())
+            .arg(m_settings->serverUrl().toString()), Severity::Success);
+    });
+}
+
+
+void MainWindow::openSettings(){
+    SettingsDialog dialog(m_settings->values(), this);
+    if (dialog.exec() == QDialog::Accepted) {
+        m_settings->apply(dialog.values());
+    }
 }
 
 

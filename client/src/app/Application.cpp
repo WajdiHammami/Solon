@@ -2,7 +2,10 @@
 #include "Application.h"
 #include "ui/MainWindow.h"
 
-Application::Application(int argc, char* argv[]): QApplication(argc, argv), m_MainWindow(new MainWindow(nullptr)){
+Application::Application(int argc, char* argv[]): QApplication(argc, argv), m_MainWindow(nullptr){
+    // QSettings stores under organization/application, so set both before
+    // anything (MainWindow's ClientSettings) reads settings.
+    setOrganizationName("Solon");
     setApplicationName("Solon");
 
     setStyleSheet(R"(
@@ -50,6 +53,43 @@ Application::Application(int argc, char* argv[]): QApplication(argc, argv), m_Ma
             border: 1px solid #89b4fa;
         }
 
+        QSpinBox {
+            background-color: #313244;
+            border: 1px solid #45475a;
+            border-radius: 6px;
+            padding: 5px 8px;
+            color: #cdd6f4;
+        }
+
+        QSpinBox:focus {
+            border: 1px solid #89b4fa;
+        }
+
+        QToolBar QToolButton {
+            padding: 6px;
+            border-radius: 6px;
+        }
+
+        QToolBar QToolButton:hover {
+            background-color: #313244;
+        }
+
+        QLabel#settingsHeader {
+            font-size: 15px;
+            font-weight: bold;
+            color: #89b4fa;
+        }
+
+        QLabel#settingsHint {
+            color: #6c7086;
+            font-size: 11px;
+        }
+
+        QLabel#settingsError {
+            color: #f38ba8;
+            font-weight: bold;
+        }
+
         QPushButton {
             background-color: #89b4fa;
             color: #1e1e2e;
@@ -65,6 +105,11 @@ Application::Application(int argc, char* argv[]): QApplication(argc, argv), m_Ma
 
         QPushButton:pressed {
             background-color: #74c7ec;
+        }
+
+        QPushButton:disabled {
+            background-color: #313244;
+            color: #6c7086;
         }
 
         QSplitter::handle {
@@ -162,5 +207,6 @@ Application::Application(int argc, char* argv[]): QApplication(argc, argv), m_Ma
         }
     )");
 
+    m_MainWindow = new MainWindow(nullptr);
     m_MainWindow->show();
 }

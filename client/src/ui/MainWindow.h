@@ -12,6 +12,7 @@
 
 
 class ArticleListModel;
+class ClientSettings;
 class ArticleDetailView;
 class QListView;
 class SynthesisView;
@@ -29,6 +30,7 @@ private:
     void onArticleAnalysis(int articleId, const ArticleAnalysis& analysis, const QList<TaskFailure>& failures);
     void onContent(const QString& url, const QString& content);
     void onError(ApiClient::Request request, const QString& message);
+    void openSettings();
 
     enum class Severity { Info, Success, Warning, Error };
     // Status bar text, colored by severity (see QStatusBar[severity] in the stylesheet).
@@ -40,6 +42,7 @@ private:
     void refreshDetailView(int articleId);
     QString describeFailure(const TaskFailure& failure) const;
 
+    ClientSettings* m_settings;
     ApiClient* m_apiClient;
     ArticleListModel* m_articleListModel;
     QLineEdit* m_searchBar;
