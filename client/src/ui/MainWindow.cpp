@@ -8,6 +8,11 @@
 #include <QVBoxLayout>
 #include <QToolBar>
 #include <QStyle>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QLabel>
+#include "models/ArticleSortProxy.h"
+#include "ui/ArticleItemDelegate.h"
 #include "ui/views/ArticleDetailView.h"
 #include "ui/views/SynthesisView.h"
 #include "ui/dialogs/SettingsDialog.h"
@@ -15,7 +20,7 @@
 #include "app/ClientSettings.h"
 
 
-MainWindow::MainWindow(QWidget* parent): QMainWindow(parent), m_settings(new ClientSettings(this)), m_apiClient(new ApiClient(this)), m_articleListModel(new ArticleListModel(this)){
+MainWindow::MainWindow(QWidget* parent): QMainWindow(parent), m_settings(new ClientSettings(this)), m_apiClient(new ApiClient(this)), m_articleListModel(new ArticleListModel(this)), m_sortProxy(new ArticleSortProxy(this)){
     m_apiClient->setBaseUrl(m_settings->serverUrl());
 
    setupUI();
@@ -43,8 +48,8 @@ void MainWindow::setupUI(){
     m_searchBar->setPlaceholderText("Search a topic — leave empty for top headlines");
     m_searchBar->setClearButtonEnabled(true);
     m_searchButton = new QPushButton("Search", centralWidget);
-    m_batchSummarize = new QPushButton("Summarize All", centralWidget);
-    m_batchSummarize->setEnabled(false);  // until there are articles
+    m_batchSummarize = new QPushButton(centralWidget);
+    m_batchSummarize->setToolTip("Summarize the ticked articles and synthesize them");
     m_splitter = new QSplitter(Qt::Horizontal, centralWidget);
     m_synthesisSpliter = new QSplitter(Qt::Vertical, centralWidget);
     m_synthesisView = new SynthesisView(centralWidget);
@@ -69,14 +74,43 @@ void MainWindow::setupUI(){
     main_layout->addWidget(m_splitter);
 
 
-    m_articlesView = new QListView(centralWidget);
-    m_articlesView->setModel(m_articleListModel);
+    // Article list: [Select all] ........ Sort by [combo] above the list.
+    QWidget* listPanel = new QWidget(centralWidget);
+    m_selectAll = new QCheckBox("Select all", listPanel);
+    m_selectAll->setTristate(false);
+    m_sortCombo = new QComboBox(listPanel);
+    m_sortCombo->addItems(ArticleSortProxy::labels());
+    QHBoxLayout* listHeader = new QHBoxLayout();
+    listHeader->setContentsMargins(4, 0, 4, 0);
+    listHeader->addWidget(m_selectAll);
+    listHeader->addStretch();
+    listHeader->addWidget(new QLabel("Sort by", listPanel));
+    listHeader->addWidget(m_sortCombo);
+
+    m_sortProxy->setSourceModel(m_articleListModel);
+    m_articlesView = new QListView(listPanel);
+    m_articlesView->setModel(m_sortProxy);
+    m_articlesView->setItemDelegate(new ArticleItemDelegate(m_articlesView));
+    m_articlesView->setMouseTracking(true);  // hover highlight + tooltips
+
+    QVBoxLayout* listLayout = new QVBoxLayout(listPanel);
+    listLayout->setContentsMargins(0, 0, 0, 0);
+    listLayout->setSpacing(6);
+    listLayout->addLayout(listHeader);
+    listLayout->addWidget(m_articlesView);
+
+    const int savedSort = m_settings->articleSort();
+    const int sortIndex = (savedSort >= 0 && savedSort < m_sortCombo->count()) ? savedSort : 0;
+    m_sortCombo->setCurrentIndex(sortIndex);
+    m_sortProxy->setSortKey(static_cast<ArticleSortProxy::SortKey>(sortIndex));
+
     m_detailView = new ArticleDetailView(m_splitter);
     m_splitter->addWidget(m_synthesisSpliter);
     m_splitter->addWidget(m_detailView);
 
-    m_synthesisSpliter->addWidget(m_articlesView);
+    m_synthesisSpliter->addWidget(listPanel);
     m_synthesisSpliter->addWidget(m_synthesisView);
+    updateBatchControls();
 
     m_detailView->hide();
 
@@ -100,7 +134,6 @@ void MainWindow::setupConnections(){
         m_feedInFlight = false;
         m_searchButton->setEnabled(true);
         m_articleListModel->setArticles(articles);
-        m_batchSummarize->setEnabled(!articles.isEmpty() && !m_batchInFlight);
         endRequest();
         if (articles.isEmpty()) {
             showStatus("No articles found — try another topic", Severity::Warning);
@@ -109,18 +142,31 @@ void MainWindow::setupConnections(){
         }
     });
     connect(m_articlesView, &QListView::clicked, this, [this](const QModelIndex& index){
-        m_detailView->setArticle(m_articleListModel->articleAt(index.row()));
+        m_detailView->setArticle(articleAtViewRow(index));
         m_detailView->show();
     });
 
-    // Batch analysis
+    // Selection and ordering
+    connect(m_articleListModel, &ArticleListModel::checkedCountChanged, this, &MainWindow::updateBatchControls);
+    connect(m_articleListModel, &QAbstractItemModel::modelReset, this, &MainWindow::updateBatchControls);
+    connect(m_selectAll, &QCheckBox::clicked, this, [this](){
+        const int total = m_articleListModel->allArticles().size();
+        // Anything short of "all ticked" selects all; all ticked clears.
+        m_articleListModel->setAllChecked(m_articleListModel->checkedCount() < total);
+    });
+    connect(m_sortCombo, &QComboBox::currentIndexChanged, this, [this](int index){
+        m_sortProxy->setSortKey(static_cast<ArticleSortProxy::SortKey>(index));
+        m_settings->setArticleSort(index);
+    });
+
+    // Batch analysis (ticked articles only)
     connect(m_batchSummarize, &QPushButton::clicked, this, [this](){
-        const QList<Article>& articles = m_articleListModel->allArticles();
+        const QList<Article> articles = m_articleListModel->checkedArticles();
         if (articles.isEmpty()) return;
         m_apiClient->analyzeArticles(articles);
         m_batchInFlight = true;
-        m_batchSummarize->setEnabled(false);
-        beginRequest(QString("Analyzing %1 articles...").arg(articles.size()));
+        updateBatchControls();
+        beginRequest(QString("Analyzing %1 selected articles...").arg(articles.size()));
     });
     connect(m_apiClient, &ApiClient::batchAnalysisReceived, this, &MainWindow::onBatchAnalysis);
 
@@ -146,6 +192,27 @@ void MainWindow::setupConnections(){
             .arg(m_settings->pageSize()).arg(m_settings->page())
             .arg(m_settings->serverUrl().toString()), Severity::Success);
     });
+}
+
+
+void MainWindow::updateBatchControls(){
+    const int checked = m_articleListModel->checkedCount();
+    const int total = m_articleListModel->allArticles().size();
+    m_batchSummarize->setText(checked > 0 ? QString("Summarize Selected (%1)").arg(checked)
+                                          : QString("Summarize Selected"));
+    m_batchSummarize->setEnabled(checked > 0 && !m_batchInFlight);
+    if (m_batchInFlight) m_batchSummarize->setText("Summarizing...");
+
+    // Mirror the ticks in "Select all" without re-triggering it.
+    const QSignalBlocker blocker(m_selectAll);
+    m_selectAll->setEnabled(total > 0);
+    m_selectAll->setCheckState(checked == 0 ? Qt::Unchecked
+                               : checked == total ? Qt::Checked : Qt::PartiallyChecked);
+}
+
+
+Article MainWindow::articleAtViewRow(const QModelIndex& viewIndex) const {
+    return m_articleListModel->articleAt(m_sortProxy->mapToSource(viewIndex).row());
 }
 
 
@@ -180,7 +247,7 @@ void MainWindow::onBatchAnalysis(const BatchAnalysis& batch){
         : batch.synthesis);
 
     m_batchInFlight = false;
-    m_batchSummarize->setEnabled(!m_articleListModel->allArticles().isEmpty());
+    updateBatchControls();
     endRequest();
 
     const QString summary = QString("Analyzed %1 articles — %2 failed tasks, %3 skipped")
@@ -242,7 +309,7 @@ void MainWindow::onError(ApiClient::Request request, const QString& message){
         case ApiClient::Request::Analyze:
             what = "Analysis";
             m_batchInFlight = false;
-            m_batchSummarize->setEnabled(!m_articleListModel->allArticles().isEmpty());
+            updateBatchControls();
             break;
         case ApiClient::Request::AnalyzeArticle:
             what = "Article analysis";

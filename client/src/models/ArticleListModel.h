@@ -3,6 +3,7 @@
 
 #include <QAbstractListModel>
 #include <QList>
+#include <QSet>
 #include <optional>
 #include "Article.h"
 #include "Analysis.h"
@@ -11,9 +12,22 @@
 class ArticleListModel : public QAbstractListModel{
     Q_OBJECT
 public:
+    enum ArticleRole {
+        TitleRole = Qt::UserRole + 1,
+        SourceRole,
+        UrlRole,
+        PublishedAtRole,
+        SummaryRole,
+        TagRole,
+        IdRole,
+        SummarizedRole
+    };
+
     explicit ArticleListModel(QObject* parent=nullptr): QAbstractListModel(parent){}
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role=Qt::DisplayRole) const override;
+    bool setData(const QModelIndex& index, const QVariant& value, int role = Qt::EditRole) override;
+    Qt::ItemFlags flags(const QModelIndex& index) const override;
     QHash<int, QByteArray> roleNames() const override;
     Article articleAt(int row) const;
     const QList<Article>& allArticles() const;
@@ -22,20 +36,20 @@ public:
     // In-place updates; return false when no article matches.
     bool applyAnalysis(int articleId, const ArticleAnalysis& analysis);
     bool setFullText(const QString& url, const QString& text);
+
+    // Ticked articles (checkboxes), in feed order.
+    QList<Article> checkedArticles() const;
+    int checkedCount() const { return m_checked.size(); }
+    void setAllChecked(bool checked);
 public slots:
     void setArticles(const QList<Article>& articles);
+
+signals:
+    void checkedCountChanged(int count);
 
 private:
     int rowForId(int id) const;
     QList<Article> m_articles;
-
-    enum ArticleRole {
-        TitleRole = Qt::UserRole + 1,
-        SourceRole,
-        UrlRole,
-        PublishedAtRole,
-        SummaryRole,
-        TagRole
-};
+    QSet<int> m_checked;   // article ids
 };
 

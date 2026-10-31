@@ -6,6 +6,7 @@ namespace {
 const char* kServerUrlKey = "server/url";
 const char* kPageSizeKey = "feed/pageSize";
 const char* kPageKey = "feed/page";
+const char* kArticleSortKey = "ui/articleSort";
 }
 
 
@@ -64,6 +65,13 @@ void ClientSettings::load(){
     // A hand-edited or outdated config file must not break requests.
     m_values = validate(loaded).isEmpty() ? loaded : fallback;
     m_values.serverUrl.setPath({});
+    m_articleSort = store.value(kArticleSortKey, 0).toInt();
+}
+
+
+void ClientSettings::setArticleSort(int sortKey){
+    m_articleSort = sortKey;
+    QSettings().setValue(kArticleSortKey, sortKey);
 }
 
 

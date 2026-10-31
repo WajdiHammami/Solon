@@ -17,7 +17,7 @@ SynthesisView::SynthesisView(QWidget* parent): QWidget(parent) {
 
     m_synthesis = new QTextEdit(this);
     m_synthesis->setReadOnly(true);
-    m_synthesis->setPlaceholderText("Run 'Summarize All' to generate a synthesis...");
+    m_synthesis->setPlaceholderText("Tick articles and run 'Summarize Selected' to generate a synthesis...");
     m_synthesis->setObjectName("synthesisText");
 
     QVBoxLayout* layout = new QVBoxLayout(this);

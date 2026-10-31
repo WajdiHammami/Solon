@@ -12,6 +12,9 @@
 
 
 class ArticleListModel;
+class ArticleSortProxy;
+class QCheckBox;
+class QComboBox;
 class ClientSettings;
 class ArticleDetailView;
 class QListView;
@@ -31,6 +34,9 @@ private:
     void onContent(const QString& url, const QString& content);
     void onError(ApiClient::Request request, const QString& message);
     void openSettings();
+    // Label/enabled state of the batch button from the ticked count.
+    void updateBatchControls();
+    Article articleAtViewRow(const QModelIndex& viewIndex) const;
 
     enum class Severity { Info, Success, Warning, Error };
     // Status bar text, colored by severity (see QStatusBar[severity] in the stylesheet).
@@ -45,6 +51,9 @@ private:
     ClientSettings* m_settings;
     ApiClient* m_apiClient;
     ArticleListModel* m_articleListModel;
+    ArticleSortProxy* m_sortProxy;
+    QCheckBox* m_selectAll;
+    QComboBox* m_sortCombo;
     QLineEdit* m_searchBar;
     QPushButton* m_searchButton;
     QPushButton* m_batchSummarize;

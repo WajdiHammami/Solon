@@ -62,14 +62,8 @@ ArticleDetailView::ArticleDetailView(QWidget* parent)
     layout->addLayout(buttonsLayout);
     setLayout(layout);
 
-    if(m_article.summary.isEmpty()){
-        m_summarizeButton->setDisabled(false);
-    }else{
-        m_summarizeButton->setDisabled(true);
-    }
+    updateButtons();
 
-  
-    
     // Connections:
     connect(m_summarizeButton, &QPushButton::clicked, this, [this](){
         emit summarizeRequest(m_article); 
@@ -106,13 +100,14 @@ void ArticleDetailView::setArticle(const Article& article) {
     m_biasExplanation->setText(article.tag_explanation);
     m_biasExplanation->setVisible(!article.tag_explanation.isEmpty());
     m_article = article;
-    
-    if(m_article.summary.isEmpty()){
-        m_summarizeButton->setDisabled(false);
-    }else{
-        m_summarizeButton->setDisabled(true);
-    }
+    updateButtons();
+}
 
+
+void ArticleDetailView::updateButtons(){
+    // Nothing to act on until an article is shown; summarize only once.
+    m_readButton->setEnabled(hasArticle());
+    m_summarizeButton->setEnabled(hasArticle() && m_article.summary.isEmpty());
 }
 
 

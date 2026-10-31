@@ -29,7 +29,6 @@ Application::Application(int argc, char* argv[]): QApplication(argc, argv), m_Ma
         QListView::item {
             padding: 10px 12px;
             border-radius: 6px;
-            color: #cdd6f4;
         }
 
         QListView::item:hover {
@@ -38,7 +37,38 @@ Application::Application(int argc, char* argv[]): QApplication(argc, argv), m_Ma
 
         QListView::item:selected {
             background-color: #45475a;
+        }
+
+        QListView::indicator, QCheckBox::indicator {
+            width: 14px;
+            height: 14px;
+            border: 1px solid #6c7086;
+            border-radius: 3px;
+            background-color: #313244;
+        }
+
+        QListView::indicator:checked, QCheckBox::indicator:checked {
+            background-color: #89b4fa;
+            border-color: #89b4fa;
+        }
+
+        QCheckBox::indicator:indeterminate {
+            background-color: rgba(137, 180, 250, 0.45);
+            border-color: #89b4fa;
+        }
+
+        QComboBox {
+            background-color: #313244;
+            border: 1px solid #45475a;
+            border-radius: 6px;
+            padding: 4px 10px;
             color: #cdd6f4;
+        }
+
+        QComboBox QAbstractItemView {
+            background-color: #313244;
+            selection-background-color: #45475a;
+            border: 1px solid #45475a;
         }
 
         QLineEdit {

@@ -22,6 +22,8 @@ signals:
     void contentRequest(const QString& url);
 
 private:
+    void updateButtons();
+
     QLabel* m_title;
     QLabel* m_source;
     QLabel* m_date;

@@ -33,6 +33,11 @@ public:
     int pageSize() const { return m_values.pageSize; }
     int page() const { return m_values.page; }
 
+    // List ordering (ArticleSortProxy::SortKey as int); a UI preference, so
+    // it lives outside Values and doesn't emit changed().
+    int articleSort() const { return m_articleSort; }
+    void setArticleSort(int sortKey);
+
     // Stores valid values and emits changed() if anything differs.
     // Returns false, changing nothing, when validate() rejects them.
     bool apply(const Values& values);
@@ -45,4 +50,5 @@ private:
     void save() const;
 
     Values m_values;
+    int m_articleSort = 0;
 };
