@@ -9,9 +9,8 @@ from functools import lru_cache
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
-from backend.article_registry import ArticleRegistry, InMemoryArticleRegistry
+from backend.article_registry import ArticleRegistry
 from backend.cache.base import AnalysisCache
-from backend.cache.memory import InMemoryAnalysisCache
 from backend.config import get_settings
 from backend.llm.base import LLMClient
 from backend.llm.factory import create_llm
@@ -19,6 +18,7 @@ from backend.logging_config import configure_logging
 from backend.models import (
     AnalyzeRequest,
     Article,
+    ArticleAnalysis,
     ArticleResult,
     BatchAnalysis,
 )
@@ -34,6 +34,9 @@ from backend.request_context import (
     resolve_request_id,
     set_request_id,
 )
+from backend.storage.database import Database, DatabaseConfig
+from backend.storage.sql_cache import SqlAnalysisCache
+from backend.storage.sql_registry import SqlArticleRegistry
 from backend.workflows.article_workflow import ArticleWorkflow
 from backend.workflows.batch_workflow import BatchWorkflow
 
@@ -50,7 +53,12 @@ async def lifespan(app: FastAPI):
         settings.log_backup_count,
     )
     logger.info("Solon backend starting (LLM provider: %s)", settings.llm_provider)
-    yield
+    database = get_database()
+    await database.connect()  # also applies pending migrations
+    try:
+        yield
+    finally:
+        await database.close()
 
 
 app = FastAPI(title="Solon", version="0.2.0", lifespan=lifespan)
@@ -107,13 +115,18 @@ def get_llm() -> LLMClient:
 
 
 @lru_cache
+def get_database() -> Database:
+    return Database(DatabaseConfig(url=get_settings().resolved_database_url))
+
+
+@lru_cache
 def get_cache() -> AnalysisCache:
-    return InMemoryAnalysisCache()
+    return SqlAnalysisCache(get_database(), model=get_llm().config.model)
 
 
 @lru_cache
 def get_registry() -> ArticleRegistry:
-    return InMemoryArticleRegistry()
+    return SqlArticleRegistry(get_database())
 
 
 @lru_cache
@@ -147,8 +160,12 @@ def get_batch_workflow() -> BatchWorkflow:
 
 
 @app.get("/health")
-def health_check() -> dict[str, str]:
-    return {"status": "healthy"}
+async def health_check() -> dict[str, str]:
+    database_ok = await get_database().health()
+    return {
+        "status": "healthy" if database_ok else "degraded",
+        "database": "ok" if database_ok else "unavailable",
+    }
 
 
 @app.get("/feed")
@@ -158,10 +175,12 @@ async def get_feed(
     page: int = Query(1, ge=1),
     providers: list[NewsProvider] = Depends(get_providers),
     registry: ArticleRegistry = Depends(get_registry),
+    cache: AnalysisCache = Depends(get_cache),
 ) -> list[Article]:
     """Articles matching ``topic``; top headlines when it is missing or blank.
 
-    Every returned article is registered, so it can be analyzed later.
+    Every returned article is registered, so it can be analyzed later, and
+    comes with its summary/bias when a current analysis is already stored.
     """
     topic = (topic or "").strip()
     articles: list[Article] = []
@@ -181,8 +200,31 @@ async def get_feed(
         raise HTTPException(status_code=502, detail={"message": str(e)}) from e
     # Each provider numbers from 0; renumber so ids are unique across providers.
     articles = [a.model_copy(update={"id": i}) for i, a in enumerate(articles)]
-    await registry.register(articles)
+    # Register the articles as issued (fingerprints cover only what the
+    # provider returned, so attaching analysis below doesn't affect them).
+    new = await registry.register(articles)
+    known = await cache.get_many([a.url for a in articles])
+    articles = [_with_analysis(a, known.get(a.url)) for a in articles]
+    distinct = len({a.url for a in articles})
+    logger.info(
+        "Feed %s: %d new, %d already in the database (%d total), %d with stored analysis",
+        f'"{topic}"' if topic else "top headlines",
+        new,
+        distinct - new,
+        distinct,
+        len(known),
+    )
     return articles
+
+
+def _with_analysis(article: Article, analysis: ArticleAnalysis | None) -> Article:
+    if analysis is None:
+        return article
+    update: dict = {"summary": analysis.summary}
+    if analysis.bias is not None:
+        update["tag"] = analysis.bias.label
+        update["tag_explanation"] = analysis.bias.explanation
+    return article.model_copy(update=update)
 
 
 async def _require_issued(articles: list[Article], registry: ArticleRegistry) -> None:
@@ -218,7 +260,15 @@ async def analyze_article(
 ) -> ArticleResult:
     """Summarize and bias-tag one article; partial failures are reported."""
     await _require_issued([article], registry)
-    return await workflow.run(article)
+    result = await workflow.run(article)
+    logger.info(
+        "Article analysis %s: from database %s, new %s, failed %s",
+        article.url,
+        ", ".join(result.from_cache) or "nothing",
+        ", ".join(result.computed) or "nothing",
+        ", ".join(f.task for f in result.failures) or "nothing",
+    )
+    return result
 
 
 @app.get("/article/content")

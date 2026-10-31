@@ -21,11 +21,13 @@ from backend.main import (
     app,
     get_article_workflow,
     get_batch_workflow,
+    get_cache,
     get_providers,
     get_registry,
 )
 from backend.models import Article
 from backend.news_providers.base import DEFAULT_PAGE_SIZE, NewsProvider
+from backend.storage.database import Database, DatabaseConfig
 from backend.workflows import prompts
 from backend.workflows.article_workflow import ArticleWorkflow
 from backend.workflows.batch_workflow import BatchWorkflow
@@ -176,10 +178,13 @@ def issue(registry):
 
 
 @pytest.fixture
-def make_client(fake_provider, registry, monkeypatch):
+def make_client(fake_provider, registry, monkeypatch, tmp_path):
     """Build a TestClient whose workflows run on the given scripted LLM."""
-    # Startup would otherwise configure logging to write into backend/logs.
+    # Startup would otherwise configure logging to write into backend/logs
+    # and open the real database in backend/data.
     monkeypatch.setattr(main, "configure_logging", lambda *a, **k: None)
+    test_db = Database(DatabaseConfig(url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"))
+    monkeypatch.setattr(main, "get_database", lambda: test_db)
     clients = []
 
     def _make(llm=None, max_tokens=None):
@@ -188,14 +193,14 @@ def make_client(fake_provider, registry, monkeypatch):
         async def load_content(url):
             return fake_provider.extract_content(url)
 
-        article_workflow = ArticleWorkflow(
-            llm, InMemoryAnalysisCache(), content_loader=load_content
-        )
+        cache = InMemoryAnalysisCache()
+        article_workflow = ArticleWorkflow(llm, cache, content_loader=load_content)
         batch_workflow = BatchWorkflow(llm, article_workflow, max_tokens=max_tokens)
         app.dependency_overrides[get_providers] = lambda: [fake_provider]
         app.dependency_overrides[get_article_workflow] = lambda: article_workflow
         app.dependency_overrides[get_batch_workflow] = lambda: batch_workflow
         app.dependency_overrides[get_registry] = lambda: registry
+        app.dependency_overrides[get_cache] = lambda: cache
         client = TestClient(app)
         client.__enter__()
         clients.append(client)

@@ -41,12 +41,18 @@ class Settings(BaseSettings):
     batch_max_concurrency: int = 4
     # Articles with less text than this are scraped before analysis.
     min_content_chars: int = 600
+    # SQLAlchemy async URL; empty means SQLite at backend/data/solon.db.
+    database_url: str = ""
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @property
+    def resolved_database_url(self) -> str:
+        return self.database_url or f"sqlite+aiosqlite:///{BACKEND_DIR / 'data' / 'solon.db'}"
 
     @property
     def log_file_path(self) -> Path | None:

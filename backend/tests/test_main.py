@@ -30,7 +30,7 @@ def _article_payload(id, **overrides):
 def test_health(client):
     resp = client.get("/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "healthy"}
+    assert resp.json() == {"status": "healthy", "database": "ok"}
 
 
 class TestFeed:
@@ -155,3 +155,61 @@ def test_get_content(client, issue):
     resp = client.get("/article/content", params={"url": "https://example.com/1"})
     assert resp.status_code == 200
     assert resp.json() == SCRAPED
+
+
+class TestFeedAndAnalysisLogging:
+    def test_feed_logs_new_vs_known(self, make_client, caplog):
+        import logging
+
+        caplog.set_level(logging.INFO, logger="backend")
+        client, _ = make_client()
+        client.get("/feed", params={"topic": "tech"})
+        client.get("/feed", params={"topic": "tech"})
+        lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Feed")]
+        assert lines == [
+            'Feed "tech": 1 new, 0 already in the database (1 total), 0 with stored analysis',
+            'Feed "tech": 0 new, 1 already in the database (1 total), 0 with stored analysis',
+        ]
+
+    def test_single_analysis_logs_provenance(self, make_client, caplog):
+        import logging
+
+        caplog.set_level(logging.INFO, logger="backend")
+        client, _ = make_client()
+        [article] = client.get("/feed", params={"topic": "tech"}).json()
+        client.post("/analyze/article", json=article)
+        client.post("/analyze/article", json=article)
+        lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Article analysis")]
+        assert lines[0].endswith("from database nothing, new summarize, detect_bias, failed nothing")
+        assert lines[1].endswith("from database summarize, detect_bias, new nothing, failed nothing")
+
+
+class TestFeedIncludesStoredAnalysis:
+    def test_new_articles_have_no_analysis(self, client):
+        [article] = client.get("/feed", params={"topic": "tech"}).json()
+        assert article["summary"] is None and article["tag"] is None
+
+    def test_analyzed_article_comes_back_with_summary_and_bias(self, client):
+        [article] = client.get("/feed", params={"topic": "tech"}).json()
+        client.post("/analyze/article", json=article)
+
+        [again] = client.get("/feed", params={"topic": "tech"}).json()
+        assert again["summary"] == "summary of A"
+        assert again["tag"] == "Political"
+        assert again["tag_explanation"] == "Charged language."
+
+    def test_article_with_analysis_still_passes_verification(self, client):
+        [article] = client.get("/feed", params={"topic": "tech"}).json()
+        client.post("/analyze/article", json=article)
+        [again] = client.get("/feed", params={"topic": "tech"}).json()
+        # Sent back exactly as received (analysis fields included): still issued.
+        assert client.post("/analyze/article", json=again).status_code == 200
+
+    def test_partial_analysis_is_returned_as_is(self, make_client):
+        llm = ScriptedLLM(fail={("detect_bias", "*"): LLMRateLimitError("slow")})
+        client, _ = make_client(llm)
+        [article] = client.get("/feed", params={"topic": "tech"}).json()
+        client.post("/analyze/article", json=article)
+        [again] = client.get("/feed", params={"topic": "tech"}).json()
+        assert again["summary"] == "summary of A"
+        assert again["tag"] is None

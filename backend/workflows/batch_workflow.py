@@ -40,6 +40,8 @@ class BatchState(TypedDict, total=False):
     estimated_tokens: int
     analyses: Annotated[dict[int, ArticleAnalysis], operator.or_]
     failed: Annotated[list[TaskFailure], operator.add]
+    # (task, "cache" | "computed") for every summary/bias produced.
+    provenance: Annotated[list[tuple[str, str]], operator.add]
     synthesis: str | None
     sources: list[int]
 
@@ -78,7 +80,8 @@ class BatchWorkflow:
         if self._max_concurrency is not None:
             config["max_concurrency"] = self._max_concurrency
         state = await self.graph.ainvoke(
-            {"articles": articles, "analyses": {}, "failed": []}, config=config
+            {"articles": articles, "analyses": {}, "failed": [], "provenance": []},
+            config=config,
         )
         return BatchAnalysis(
             analyses=state["analyses"],
@@ -144,7 +147,12 @@ class BatchWorkflow:
     async def _analyze_article(self, state: AnalyzeArticleState) -> BatchState:
         article = state["article"]
         result = await self._article_workflow.run(article, known=state["known"])
-        return {"analyses": {article.id: result.analysis}, "failed": result.failures}
+        return {
+            "analyses": {article.id: result.analysis},
+            "failed": result.failures,
+            "provenance": [(t, "cache") for t in result.from_cache]
+            + [(t, "computed") for t in result.computed],
+        }
 
     async def _synthesize(self, state: BatchState) -> BatchState:
         summarized = [
@@ -153,6 +161,7 @@ class BatchWorkflow:
             if state["analyses"][article.id].summary
         ]
         sources = [article.id for article, _ in summarized]
+        self._log_provenance(state)
         if not summarized:
             return {"synthesis": None, "sources": []}
         try:
@@ -176,3 +185,20 @@ class BatchWorkflow:
             len(state["failed"]),
         )
         return {"synthesis": synthesis, "sources": sources}
+
+    @staticmethod
+    def _log_provenance(state: BatchState) -> None:
+        provenance = state.get("provenance", [])
+
+        def count(task: str, origin: str) -> int:
+            return provenance.count((task, origin))
+
+        logger.info(
+            "Batch analysis: %d articles — summaries %d new, %d from database; "
+            "bias %d new, %d from database",
+            len(state["selected"]),
+            count("summarize", "computed"),
+            count("summarize", "cache"),
+            count("detect_bias", "computed"),
+            count("detect_bias", "cache"),
+        )

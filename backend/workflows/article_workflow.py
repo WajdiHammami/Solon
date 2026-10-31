@@ -42,6 +42,7 @@ class ArticleState(TypedDict, total=False):
     known: ArticleAnalysis | None  # pre-resolved by the caller; skips the lookup
     summary: str | None
     bias: BiasAssessment | None
+    from_cache: list[str]  # tasks whose result was already known at load
     failures: Annotated[list[TaskFailure], operator.add]
 
 
@@ -80,11 +81,26 @@ class ArticleWorkflow:
         state = await self.graph.ainvoke(
             {"article": article, "known": known, "failures": []}
         )
+        from_cache = state.get("from_cache", [])
+        produced = {"summarize": state.get("summary"), "detect_bias": state.get("bias")}
+        computed = [
+            task for task, value in produced.items()
+            if value is not None and task not in from_cache
+        ]
+        logger.debug(
+            "Article %s: from cache %s, computed %s, failed %s",
+            article.url,
+            from_cache or "-",
+            computed or "-",
+            [f.task for f in state["failures"]] or "-",
+        )
         return ArticleResult(
             analysis=ArticleAnalysis(
                 summary=state.get("summary"), bias=state.get("bias")
             ),
             failures=state["failures"],
+            from_cache=from_cache,
+            computed=computed,
         )
 
     async def resolve_known(self, article: Article) -> ArticleAnalysis:
@@ -123,7 +139,17 @@ class ArticleWorkflow:
         )
         if not known.is_complete:
             article = await self._ensure_content(article)
-        return {"article": article, "summary": known.summary, "bias": known.bias}
+        from_cache = [
+            task
+            for task, value in (("summarize", known.summary), ("detect_bias", known.bias))
+            if value is not None
+        ]
+        return {
+            "article": article,
+            "summary": known.summary,
+            "bias": known.bias,
+            "from_cache": from_cache,
+        }
 
     async def _ensure_content(self, article: Article) -> Article:
         """Scrape full text for an article with too little content to analyze.

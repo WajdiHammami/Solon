@@ -1,5 +1,7 @@
 """Prompt text for every analysis task, kept in one place."""
 
+import hashlib
+
 ANALYST_SYSTEM = "You are a news analyst."
 
 SUMMARIZE = """Summarize this article in 3-5 sentences.
@@ -42,3 +44,14 @@ SYNTHESIZE_ARTICLE = """Title: {title}
 Source: {source}
 URL: {url}
 Summary: {summary}"""
+
+
+def _version(*templates: str) -> str:
+    return hashlib.sha256("\0".join(templates).encode("utf-8")).hexdigest()[:12]
+
+
+# Derived from the prompt text, so editing a prompt automatically invalidates
+# cached results it produced (see backend.storage.sql_cache). Summary and bias
+# are versioned separately: changing one recomputes only that part.
+SUMMARY_VERSION = _version(ANALYST_SYSTEM, SUMMARIZE)
+BIAS_VERSION = _version(BIAS_SYSTEM, BIAS_ARTICLE)

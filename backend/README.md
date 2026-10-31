@@ -37,6 +37,7 @@ cp .env.example .env
 | `LOG_MAX_BYTES` / `LOG_BACKUP_COUNT` | no | Log rotation (default 10 MB × 5) |
 | `NEWS_LANGUAGE` | no | Language for searches and headlines (default `en`) |
 | `NEWS_COUNTRY` | no | Country for top headlines, e.g. `us` (default: any) |
+| `DATABASE_URL` | no | SQLAlchemy async URL (default: SQLite at `backend/data/solon.db`) |
 | `PROFILE_PATH` | no | Path to the profile JSON (default `profiles/default.json`) |
 
 ## Running
@@ -80,6 +81,31 @@ Every response carries an `X-Request-ID` header, and every log line for that
 request is tagged with it (`[<id>]`). Callers may send their own id (up to 64
 characters from `A-Z a-z 0-9 . _ -`); anything else is replaced.
 
+## Database
+
+Issued articles and their analyses are stored in SQL (SQLite by default, at
+`backend/data/solon.db`, created on first start). The schema is managed with
+Alembic and **migrations are applied automatically at startup**.
+
+- Cached analyses are versioned by prompt: editing a prompt in
+  `workflows/prompts.py` makes the results it produced stale, so they are
+  recomputed on next use (summary and bias independently). The model that
+  produced each result is recorded but switching models does not invalidate.
+- Nothing is pruned; the `articles` table doubles as an archive.
+
+Changing the schema (run from the repo root):
+
+```bash
+# 1. edit backend/storage/tables.py
+# 2. generate a migration, then review it
+backend/.venv/bin/alembic -c backend/alembic.ini revision --autogenerate -m "describe change"
+# 3. apply it (or just restart the server)
+backend/.venv/bin/alembic -c backend/alembic.ini upgrade head
+```
+
+To use Postgres, install an async driver (e.g. `asyncpg`) and set
+`DATABASE_URL=postgresql+asyncpg://user:pass@host/solon`.
+
 ## Project layout
 
 ```
@@ -109,6 +135,12 @@ backend/
 │   ├── article_workflow.py  # One article: only the missing work
 │   └── batch_workflow.py    # Many articles: plan, analyze, synthesize
 ├── cache/                   # AnalysisCache interface + in-memory store
+├── storage/                 # SQL persistence
+│   ├── database.py          # Database: config, connect (+migrations), sessions
+│   ├── tables.py            # SQLAlchemy tables (articles, analyses)
+│   ├── sql_registry.py      # SqlArticleRegistry(ArticleRegistry)
+│   └── sql_cache.py         # SqlAnalysisCache(AnalysisCache), prompt-versioned
+├── migrations/              # Alembic migrations (alembic.ini next to it)
 ├── profiles/default.json    # Default source/topic profile
 └── tests/                   # Tests (NewsAPI test marked `integration`)
 ```

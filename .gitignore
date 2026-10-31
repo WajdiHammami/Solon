@@ -8,3 +8,4 @@ client/build/
 build/
 backend/logs/
 .cache/
+backend/data/

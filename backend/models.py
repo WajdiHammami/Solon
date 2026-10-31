@@ -10,6 +10,7 @@ class Article(BaseModel):
     url: str
     source_name: str
     tag: Optional[str] = None
+    tag_explanation: Optional[str] = None
     published_at: datetime
     content: Optional[str] = None
     summary: Optional[str] = None
@@ -43,6 +44,9 @@ class TaskFailure(BaseModel):
 class ArticleResult(BaseModel):
     analysis: ArticleAnalysis
     failures: list[TaskFailure] = []
+    # Where each produced part came from: "summarize" / "detect_bias".
+    from_cache: list[str] = []  # reused from the analysis cache (database)
+    computed: list[str] = []  # freshly produced by the LLM in this run
 
 
 class BatchAnalysis(BaseModel):

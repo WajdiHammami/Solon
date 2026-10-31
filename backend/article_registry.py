@@ -31,8 +31,11 @@ def article_fingerprint(article: Article) -> str:
 
 class ArticleRegistry(ABC):
     @abstractmethod
-    async def register(self, articles: list[Article]) -> None:
-        """Record ``articles`` as issued; re-registering a URL replaces it."""
+    async def register(self, articles: list[Article]) -> int:
+        """Record ``articles`` as issued; re-registering a URL replaces it.
+
+        Returns how many of the (distinct) URLs had never been issued before.
+        """
 
     @abstractmethod
     async def fingerprint_for(self, url: str) -> str | None:
@@ -57,12 +60,14 @@ class InMemoryArticleRegistry(ArticleRegistry):
         self._max_entries = max_entries
         self._fingerprints: OrderedDict[str, str] = OrderedDict()
 
-    async def register(self, articles: list[Article]) -> None:
+    async def register(self, articles: list[Article]) -> int:
+        new_urls = {a.url for a in articles} - self._fingerprints.keys()
         for article in articles:
             self._fingerprints[article.url] = article_fingerprint(article)
             self._fingerprints.move_to_end(article.url)
         while len(self._fingerprints) > self._max_entries:
             self._fingerprints.popitem(last=False)
+        return len(new_urls)
 
     async def fingerprint_for(self, url: str) -> str | None:
         return self._fingerprints.get(url)

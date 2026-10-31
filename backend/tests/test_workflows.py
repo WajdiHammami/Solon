@@ -319,3 +319,38 @@ async def test_prompt_content_is_capped(llm, make_article):
     await tasks.summarize(llm, make_article(content="@" * (tasks.MAX_CONTENT_CHARS + 500)))
     sent = llm.requests[0].messages[1].content
     assert sent.count("@") == tasks.MAX_CONTENT_CHARS
+
+
+class TestProvenance:
+    async def test_fresh_article_is_all_computed(self, llm, make_article):
+        result = await ArticleWorkflow(llm).run(make_article(1))
+        assert result.from_cache == []
+        assert sorted(result.computed) == ["detect_bias", "summarize"]
+
+    async def test_cached_parts_are_reported(self, llm, cache, make_article):
+        article = make_article(1)
+        await cache.put(article.url, ArticleAnalysis(summary="cached"))
+        result = await ArticleWorkflow(llm, cache).run(article)
+        assert result.from_cache == ["summarize"]
+        assert result.computed == ["detect_bias"]
+
+    async def test_failed_task_is_neither(self, cache, make_article):
+        llm = ScriptedLLM(fail={("detect_bias", "*"): LLMRateLimitError("slow")})
+        result = await ArticleWorkflow(llm, cache).run(make_article(1))
+        assert result.computed == ["summarize"]
+        assert result.from_cache == []
+
+    async def test_batch_logs_new_vs_database_counts(self, llm, cache, make_article, caplog):
+        import logging
+
+        caplog.set_level(logging.INFO, logger="backend")
+        articles = [make_article(i) for i in range(3)]
+        await cache.put(articles[0].url, ArticleAnalysis(
+            summary="cached", bias=BiasAssessment(label="None")))
+        await cache.put(articles[1].url, ArticleAnalysis(summary="cached"))
+        await BatchWorkflow(llm, ArticleWorkflow(llm, cache)).run(articles)
+        [line] = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Batch analysis")]
+        assert line == (
+            "Batch analysis: 3 articles — summaries 1 new, 2 from database; "
+            "bias 2 new, 1 from database"
+        )
