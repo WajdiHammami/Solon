@@ -66,6 +66,13 @@ uvicorn backend.main:app --reload
 with a `retryable` flag), `skipped` (ids dropped by the token budget) and
 `estimated_tokens`. A failing task never fails the request.
 
+Each bias assessment has a short `label`, an `explanation`, `political`
+(is the article about politics/policy?) and `lean` (−2 Left … +2 Right, null
+when not political). Bias detection is **blinded**: the prompt contains only
+the title and text, with the outlet's name and domain removed
+(`workflows/blinding.py`), so the model judges the article rather than the
+outlet's reputation.
+
 Summaries and bias tags are cached by article URL, so repeat requests only
 pay for the synthesis. Analysis fields sent by the client (`summary`, `tag`)
 are ignored: only server-side results are reused or cached.
@@ -140,6 +147,7 @@ backend/
 │   ├── prompts.py           # All prompt text
 │   ├── tasks.py             # summarize / detect_bias / synthesize
 │   ├── budget.py            # Token estimation + article selection
+│   ├── blinding.py          # Strip outlet identity from bias prompts
 │   ├── article_workflow.py  # One article: only the missing work
 │   └── batch_workflow.py    # Many articles: plan, analyze, synthesize
 ├── cache/                   # AnalysisCache interface + in-memory store
