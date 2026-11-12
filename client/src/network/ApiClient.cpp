@@ -86,6 +86,7 @@ void ApiClient::analyzeArticles(const QList<Article>& articles){
         for(const QJsonValue& id: obj["skipped"].toArray()) batch.skipped.append(id.toInt());
         for(const QJsonValue& f: obj["failed"].toArray()) batch.failed.append(parseFailure(f.toObject()));
         batch.estimatedTokens = obj["estimated_tokens"].toInt();
+        batch.usage = parseUsage(obj["usage"].toObject());
         emit batchAnalysisReceived(batch);
     });
 }
@@ -104,7 +105,8 @@ void ApiClient::analyzeArticle(const Article& article){
 
         QList<TaskFailure> failures;
         for(const QJsonValue& f: obj["failures"].toArray()) failures.append(parseFailure(f.toObject()));
-        emit articleAnalysisReceived(articleId, parseAnalysis(obj["analysis"].toObject()), failures);
+        emit articleAnalysisReceived(articleId, parseAnalysis(obj["analysis"].toObject()), failures,
+                                     parseUsage(obj["usage"].toObject()));
     });
 }
 
@@ -230,4 +232,17 @@ TaskFailure ApiClient::parseFailure(const QJsonObject& object){
     failure.retryable = object["retryable"].toBool();
     failure.articleId = object["article_id"].isNull() ? -1 : object["article_id"].toInt();
     return failure;
+}
+
+
+LlmUsage ApiClient::parseUsage(const QJsonObject& object){
+    LlmUsage usage;
+    usage.calls = object["calls"].toInt();
+    usage.inputTokens = object["input_tokens"].toInt();
+    usage.outputTokens = object["output_tokens"].toInt();
+    usage.hasCost = object["cost"].isDouble();
+    usage.cost = object["cost"].toDouble();
+    usage.currency = object["currency"].toString();
+    usage.model = object["model"].toString();
+    return usage;
 }

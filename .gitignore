@@ -9,3 +9,5 @@ build/
 backend/logs/
 .cache/
 backend/data/
+evaluation/data/
+docs/

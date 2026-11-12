@@ -26,7 +26,7 @@ public:
 signals:
     void feedReceived(const QList<Article>& articles);
     void batchAnalysisReceived(const BatchAnalysis& batch);
-    void articleAnalysisReceived(int articleId, const ArticleAnalysis& analysis, const QList<TaskFailure>& failures);
+    void articleAnalysisReceived(int articleId, const ArticleAnalysis& analysis, const QList<TaskFailure>& failures, const LlmUsage& usage);
     void contentReceived(const QString& url, const QString& content);
     // Emitted for every failed request (network, HTTP or malformed response).
     void errorOccurred(ApiClient::Request request, const QString& message);
@@ -40,6 +40,7 @@ private:
     static Article parseArticle(const QJsonObject& object);
     static ArticleAnalysis parseAnalysis(const QJsonObject& object);
     static TaskFailure parseFailure(const QJsonObject& object);
+    static LlmUsage parseUsage(const QJsonObject& object);
     static QString errorMessage(QNetworkReply* reply, const QByteArray& body);
 
     QNetworkAccessManager* m_network;

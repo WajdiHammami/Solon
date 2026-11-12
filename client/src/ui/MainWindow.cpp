@@ -18,6 +18,7 @@
 #include "ui/views/SynthesisView.h"
 #include "ui/dialogs/SettingsDialog.h"
 #include "ui/Icons.h"
+#include "ui/Format.h"
 #include "app/ClientSettings.h"
 
 
@@ -61,6 +62,12 @@ void MainWindow::setupUI(){
 
     m_statusBar = statusBar();
     statusBar()->addPermanentWidget(m_progressBar);
+    // Session-wide LLM usage, updated after every analysis.
+    m_usageLabel = new QLabel(this);
+    m_usageLabel->setObjectName("usageLabel");
+    m_usageLabel->setToolTip("LLM usage this session (cached results cost nothing)");
+    statusBar()->addPermanentWidget(m_usageLabel);
+    recordUsage({});
     showStatus("Ready");
 
 
@@ -291,7 +298,8 @@ void MainWindow::onBatchAnalysis(const BatchAnalysis& batch){
     endRequest();
 
     const QString summary = QString("Analyzed %1 articles — %2 failed tasks, %3 skipped")
-        .arg(batch.analyses.size()).arg(batch.failed.size()).arg(batch.skipped.size());
+        .arg(batch.analyses.size()).arg(batch.failed.size()).arg(batch.skipped.size())
+        + recordUsage(batch.usage);
     if (batch.analyses.isEmpty() && !batch.failed.isEmpty()) {
         showStatus("Analysis failed — " + summary + " (details above the synthesis)", Severity::Error);
     } else if (!batch.failed.isEmpty() || !batch.skipped.isEmpty()) {
@@ -302,19 +310,20 @@ void MainWindow::onBatchAnalysis(const BatchAnalysis& batch){
 }
 
 
-void MainWindow::onArticleAnalysis(int articleId, const ArticleAnalysis& analysis, const QList<TaskFailure>& failures){
+void MainWindow::onArticleAnalysis(int articleId, const ArticleAnalysis& analysis, const QList<TaskFailure>& failures, const LlmUsage& usage){
     m_articleListModel->applyAnalysis(articleId, analysis);
     refreshDetailView(articleId);
     endRequest();
+    const QString usageText = recordUsage(usage);
 
     if (failures.isEmpty()) {
-        showStatus("Article analyzed", Severity::Success);
+        showStatus("Article analyzed" + usageText, Severity::Success);
         return;
     }
     QStringList messages;
     for (const TaskFailure& failure : failures) messages << describeFailure(failure);
     const bool nothingProduced = analysis.summary.isEmpty() && analysis.biasLabel.isEmpty();
-    showStatus((nothingProduced ? "Article analysis failed — " : "Partly analyzed — ") + messages.join("; "),
+    showStatus((nothingProduced ? "Article analysis failed — " : "Partly analyzed — ") + messages.join("; ") + usageText,
                nothingProduced ? Severity::Error : Severity::Warning);
 }
 
@@ -410,4 +419,23 @@ QString MainWindow::describeFailure(const TaskFailure& failure) const {
         }
     }
     return QString("%1 failed%2").arg(what, failure.retryable ? " (try again later)" : "");
+}
+
+
+QString MainWindow::recordUsage(const LlmUsage& usage){
+    m_sessionUsage += usage;
+
+    const LlmUsage& total = m_sessionUsage;
+    QString session = QString("Session: %1 tokens").arg(Format::tokens(total.totalTokens()));
+    if (total.hasCost) session += " ≈ " + Format::money(total.cost, total.currency);
+    m_usageLabel->setText(session);
+    m_usageLabel->setToolTip(QString("LLM usage this session%1\n%2 calls · %3 in / %4 out tokens\n"
+                                     "Cached results cost nothing. Prices come from the backend's .env.")
+        .arg(total.model.isEmpty() ? QString() : " (" + total.model + ")")
+        .arg(total.calls).arg(Format::tokens(total.inputTokens)).arg(Format::tokens(total.outputTokens)));
+
+    if (usage.calls == 0) return " · no LLM calls (from cache)";
+    QString text = QString(" · %1 tokens").arg(Format::tokens(usage.totalTokens()));
+    if (usage.hasCost) text += " ≈ " + Format::money(usage.cost, usage.currency);
+    return text;
 }

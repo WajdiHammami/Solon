@@ -48,7 +48,12 @@ class SqlAnalysisCache(AnalysisCache):
         """The parts of ``row`` produced by the current prompt versions."""
         summary = row.summary if row.summary_version == self._summary_version else None
         bias = (
-            BiasAssessment(label=row.bias_label, explanation=row.bias_explanation)
+            BiasAssessment(
+                label=row.bias_label,
+                explanation=row.bias_explanation,
+                political=row.bias_political,
+                lean=row.bias_lean,
+            )
             if row.bias_version == self._bias_version and row.bias_label is not None
             else None
         )
@@ -77,10 +82,14 @@ class SqlAnalysisCache(AnalysisCache):
             if bias is not None and (
                 row.bias_label != bias.label
                 or row.bias_explanation != bias.explanation
+                or row.bias_political != bias.political
+                or row.bias_lean != bias.lean
                 or row.bias_version != self._bias_version
             ):
                 row.bias_label = bias.label
                 row.bias_explanation = bias.explanation
+                row.bias_political = bias.political
+                row.bias_lean = bias.lean
                 row.bias_version = self._bias_version
                 row.bias_model = self._model
                 row.bias_at = now

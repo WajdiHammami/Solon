@@ -3,6 +3,8 @@
 The LLM is a scripted in-memory :class:`LLMClient`; nothing hits the network.
 """
 
+import json
+
 import pytest
 
 from backend.cache.memory import InMemoryAnalysisCache
@@ -354,3 +356,34 @@ class TestProvenance:
             "Batch analysis: 3 articles — summaries 1 new, 2 from database; "
             "bias 2 new, 1 from database"
         )
+
+
+class TestBiasLeanAndBlinding:
+    async def test_parses_political_and_lean(self, make_article):
+        reply = json.dumps({"label": "Loaded", "explanation": "e", "political": True, "lean": -1})
+        bias = await tasks.detect_bias(ScriptedLLM(bias_reply=reply), make_article())
+        assert (bias.political, bias.lean) == (True, -1)
+
+    async def test_non_political_article_has_no_lean(self, make_article):
+        reply = json.dumps({"label": "None", "explanation": "e", "political": False, "lean": 2})
+        bias = await tasks.detect_bias(ScriptedLLM(bias_reply=reply), make_article())
+        assert bias.political is False and bias.lean is None
+
+    async def test_out_of_range_lean_is_invalid_output(self, make_article):
+        reply = json.dumps({"label": "x", "political": True, "lean": 5})
+        with pytest.raises(LLMInvalidOutputError):
+            await tasks.detect_bias(ScriptedLLM(bias_reply=reply), make_article())
+
+    async def test_prompt_is_blinded(self, llm, make_article):
+        article = make_article(
+            1,
+            title="Budget fight escalates - Daily Planet",
+            source_name="Daily Planet",
+            url="https://www.dailyplanet.com/politics/budget",
+            content="The Daily Planet has learned that... Subscribe at dailyplanet.com.",
+        )
+        await tasks.detect_bias(llm, article)
+        sent = llm.requests[0].messages[1].content
+        assert "Daily Planet" not in sent and "dailyplanet" not in sent.lower()
+        assert "Source:" not in sent and "URL:" not in sent
+        assert "Budget fight escalates" in sent

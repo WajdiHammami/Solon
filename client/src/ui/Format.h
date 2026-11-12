@@ -17,6 +17,12 @@ QString relativeTime(const QString& isoDate);
 // "Wed 29 Oct 2026, 17:15" in local time (empty when unparseable).
 QString longDate(const QString& isoDate);
 
+// "850", "4.1k", "1.2M".
+QString tokens(int count);
+
+// "$0.0021", "$1.24", "0.0040 EUR" — small amounts keep enough digits to be useful.
+QString money(double amount, const QString& currency);
+
 // Readable typography for Markdown rendered into a QTextDocument: modest
 // heading sizes, comfortable line height and paragraph spacing.
 void polishMarkdown(QTextDocument* document);

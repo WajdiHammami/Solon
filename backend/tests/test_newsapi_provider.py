@@ -189,3 +189,17 @@ def test_news_api_provider_live():
     assert isinstance(articles, list)
     assert len(articles) > 0
     assert len({a.id for a in articles}) == len(articles)
+
+
+def test_domains_are_forwarded(provider):
+    client = FakeNewsApiClient([_ok_response("A")])
+    provider.newsapi = client
+    provider.fetch_articles("tech", domains=["apnews.com", "reuters.com"])
+    assert client.calls[0]["domains"] == "apnews.com,reuters.com"
+
+
+def test_no_domains_means_no_filter(provider):
+    client = FakeNewsApiClient([_ok_response("A")])
+    provider.newsapi = client
+    provider.fetch_articles("tech")
+    assert client.calls[0]["domains"] is None

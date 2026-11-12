@@ -14,12 +14,15 @@ from backend.cache.base import AnalysisCache
 from backend.config import get_settings
 from backend.llm.base import LLMClient
 from backend.llm.factory import create_llm
+from backend.llm.pricing import usage_summary
+from backend.llm.recording import MeteredLLM, track_usage
 from backend.logging_config import configure_logging
 from backend.models import (
     AnalyzeRequest,
     Article,
     ArticleAnalysis,
     ArticleResult,
+    LLMUsage,
     BatchAnalysis,
 )
 from backend.news_providers.base import (
@@ -111,7 +114,8 @@ def get_providers() -> list[NewsProvider]:
 
 @lru_cache
 def get_llm() -> LLMClient:
-    return create_llm(get_settings())
+    # Metered so each request can report the tokens it used (see track_usage).
+    return MeteredLLM(create_llm(get_settings()))
 
 
 @lru_cache
@@ -227,6 +231,20 @@ def _with_analysis(article: Article, analysis: ArticleAnalysis | None) -> Articl
     return article.model_copy(update=update)
 
 
+def _report_usage(operation: str, totals) -> LLMUsage:
+    """Usage of one request, priced with the configured rates, and logged."""
+    settings = get_settings()
+    usage = usage_summary(
+        totals, settings.llm_prices(), settings.llm_price_currency, get_llm().config.model
+    )
+    cost = f"≈ {usage.cost:.4f} {usage.currency}" if usage.cost is not None else "no price set"
+    logger.info(
+        "%s LLM usage: %d calls, %d in / %d out tokens, %s",
+        operation, usage.calls, usage.input_tokens, usage.output_tokens, cost,
+    )
+    return usage
+
+
 async def _require_issued(articles: list[Article], registry: ArticleRegistry) -> None:
     """Reject the request unless every article is exactly as ``/feed`` issued it."""
     rejected = [a.id for a in articles if not await registry.verify(a)]
@@ -249,7 +267,9 @@ async def analyze(
 ) -> BatchAnalysis:
     """Analyze articles and synthesize them; partial failures are reported."""
     await _require_issued(request.articles, registry)
-    return await workflow.run(request.articles)
+    with track_usage() as totals:
+        result = await workflow.run(request.articles)
+    return result.model_copy(update={"usage": _report_usage("Batch", totals)})
 
 
 @app.post("/analyze/article")
@@ -260,7 +280,9 @@ async def analyze_article(
 ) -> ArticleResult:
     """Summarize and bias-tag one article; partial failures are reported."""
     await _require_issued([article], registry)
-    result = await workflow.run(article)
+    with track_usage() as totals:
+        result = await workflow.run(article)
+    result = result.model_copy(update={"usage": _report_usage("Article", totals)})
     logger.info(
         "Article analysis %s: from database %s, new %s, failed %s",
         article.url,

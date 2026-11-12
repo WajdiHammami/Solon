@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     azure_openai_api_key: str = ""
     azure_openai_api_version: str = "2024-10-21"
     azure_openai_deployment: str = ""
+    # Prices per 1M tokens, used to estimate the cost of each LLM operation.
+    # Unset -> token counts only. Keep them in line with your provider's
+    # pricing page for the model/deployment you actually use.
+    groq_price_input_per_1m: float | None = None
+    groq_price_output_per_1m: float | None = None
+    azure_price_input_per_1m: float | None = None
+    azure_price_output_per_1m: float | None = None
+    llm_price_currency: str = "USD"
     profile_path: str = "profiles/default.json"
     log_level: str = "INFO"
     # Relative paths resolve against the backend directory; empty disables it.
@@ -49,6 +57,14 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    def llm_prices(self) -> tuple[float, float] | None:
+        """(input, output) price per 1M tokens for the active provider, if set."""
+        prices = {
+            "groq": (self.groq_price_input_per_1m, self.groq_price_output_per_1m),
+            "azure": (self.azure_price_input_per_1m, self.azure_price_output_per_1m),
+        }[self.llm_provider]
+        return prices if None not in prices else None
 
     @property
     def resolved_database_url(self) -> str:

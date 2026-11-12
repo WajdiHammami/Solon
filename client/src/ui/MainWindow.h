@@ -15,6 +15,7 @@ class ArticleListModel;
 class ArticleSortProxy;
 class QCheckBox;
 class QComboBox;
+class QLabel;
 class ClientSettings;
 class ArticleDetailView;
 class QListView;
@@ -30,7 +31,7 @@ private:
     void setupConnections();
 
     void onBatchAnalysis(const BatchAnalysis& batch);
-    void onArticleAnalysis(int articleId, const ArticleAnalysis& analysis, const QList<TaskFailure>& failures);
+    void onArticleAnalysis(int articleId, const ArticleAnalysis& analysis, const QList<TaskFailure>& failures, const LlmUsage& usage);
     void onContent(const QString& url, const QString& content);
     void onError(ApiClient::Request request, const QString& message);
     void openSettings();
@@ -47,6 +48,8 @@ private:
     void endRequest();
     void refreshDetailView(int articleId);
     QString describeFailure(const TaskFailure& failure) const;
+    // Adds an operation's usage to the session total; returns " · 4.1k tokens ≈ $0.0021".
+    QString recordUsage(const LlmUsage& usage);
 
     ClientSettings* m_settings;
     ApiClient* m_apiClient;
@@ -64,6 +67,8 @@ private:
     ArticleDetailView* m_detailView;
     QSplitter* m_synthesisSpliter;
     SynthesisView* m_synthesisView;
+    QLabel* m_usageLabel;
+    LlmUsage m_sessionUsage;
     int m_pendingRequests = 0;
     bool m_batchInFlight = false;
     bool m_feedInFlight = false;

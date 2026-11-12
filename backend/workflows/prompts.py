@@ -12,17 +12,28 @@ Title: {title}
 Source: {source}
 Content: {content}"""
 
-BIAS_SYSTEM = """You are a news analyst. Detect any potential bias in the
-article's content, framing, or language.
+BIAS_SYSTEM = """You are a news analyst. Assess bias in the article's content,
+framing, and language. You are not told which outlet published it: judge only
+the text in front of you, never an outlet's reputation.
 
 Respond with a single JSON object of this shape:
 {"label": "<at most 2 words naming the bias, or \\"None\\">",
- "explanation": "<at most 2 sentences>"}
-Use "None" as the label when the article shows no notable bias."""
+ "explanation": "<at most 2 sentences>",
+ "political": <true or false>,
+ "lean": <-2, -1, 0, 1, 2, or null>}
+
+Rules:
+- "label": use "None" when the article shows no notable bias.
+- "political": true if the article is about politics, government, policy, or a
+  politically contested issue; false otherwise (sports, technology,
+  entertainment, science, business news without a policy angle, ...).
+- "lean": where the article's framing sits on the US left-right spectrum:
+  -2 Left, -1 Lean Left, 0 Center or balanced, 1 Lean Right, 2 Right.
+  Base it on framing, word choice, which voices are quoted, and what is
+  emphasized or omitted, not on the topic alone. Use null when "political"
+  is false."""
 
 BIAS_ARTICLE = """Title: {title}
-Source: {source}
-URL: {url}
 Content: {content}"""
 
 SYNTHESIZE_SYSTEM = """You are a news analyst. You are given summaries of multiple

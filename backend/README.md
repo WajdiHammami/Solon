@@ -37,6 +37,9 @@ cp .env.example .env
 | `LOG_MAX_BYTES` / `LOG_BACKUP_COUNT` | no | Log rotation (default 10 MB × 5) |
 | `NEWS_LANGUAGE` | no | Language for searches and headlines (default `en`) |
 | `NEWS_COUNTRY` | no | Country for top headlines, e.g. `us` (default: any) |
+| `GROQ_PRICE_INPUT_PER_1M` / `GROQ_PRICE_OUTPUT_PER_1M` | no | Groq price per 1M tokens, for cost estimates |
+| `AZURE_PRICE_INPUT_PER_1M` / `AZURE_PRICE_OUTPUT_PER_1M` | no | Azure price per 1M tokens, for cost estimates |
+| `LLM_PRICE_CURRENCY` | no | default `USD` |
 | `DATABASE_URL` | no | SQLAlchemy async URL (default: SQLite at `backend/data/solon.db`) |
 | `PROFILE_PATH` | no | Path to the profile JSON (default `profiles/default.json`) |
 
@@ -76,6 +79,11 @@ The registry is in memory for now: after a server restart, search again.
 
 Errors always have a JSON body: `{"detail": {"message": ...}}` (`502` when
 the news provider fails, `500` with the `request_id` for unexpected errors).
+
+`/analyze` and `/analyze/article` also return `usage`: the LLM calls and
+input/output tokens that request actually consumed (cache hits cost nothing)
+and, when prices are configured for the active provider, an estimated `cost`.
+Each request logs one `LLM usage` line.
 
 Every response carries an `X-Request-ID` header, and every log line for that
 request is tagged with it (`[<id>]`). Callers may send their own id (up to 64

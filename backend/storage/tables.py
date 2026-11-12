@@ -6,7 +6,7 @@ migration (see ``backend/README.md``). Never edit an applied migration.
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -52,6 +52,8 @@ class AnalysisRow(Base):
 
     bias_label: Mapped[str | None] = mapped_column(String(255))
     bias_explanation: Mapped[str | None] = mapped_column(Text)
+    bias_political: Mapped[bool | None] = mapped_column(Boolean)
+    bias_lean: Mapped[int | None] = mapped_column(Integer)  # -2 Left .. 2 Right
     bias_version: Mapped[str | None] = mapped_column(String(32))
     bias_model: Mapped[str | None] = mapped_column(String(255))
     bias_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

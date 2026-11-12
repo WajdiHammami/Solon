@@ -283,6 +283,13 @@ QStatusBar {
 
 QStatusBar::item { border: none; }
 
+QLabel#usageLabel {
+    background: transparent;
+    color: #7f849c;
+    font-size: 12px;
+    padding: 0 10px;
+}
+
 QStatusBar[severity="success"] { color: #a6e3a1; }
 QStatusBar[severity="warning"] { color: #f9e2af; }
 QStatusBar[severity="error"]   { color: #f38ba8; font-weight: bold; }

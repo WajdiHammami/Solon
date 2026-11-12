@@ -7,6 +7,7 @@ the routes are exercised without real providers, an LLM, or keys.
 import pytest
 
 from backend.llm.errors import LLMRateLimitError
+from backend import main
 from backend.main import app, get_providers
 from backend.news_providers.base import DEFAULT_PAGE_SIZE
 from backend.tests.conftest import SCRAPED, FakeProvider, ScriptedLLM
@@ -213,3 +214,56 @@ class TestFeedIncludesStoredAnalysis:
         [again] = client.get("/feed", params={"topic": "tech"}).json()
         assert again["summary"] == "summary of A"
         assert again["tag"] is None
+
+
+class TestUsageReporting:
+    """Each analysis response reports the LLM tokens it consumed and their cost."""
+
+    def _client(self, make_client, monkeypatch, prices=(0.40, 1.60)):
+        from backend.llm.models import GenerationResponse, Usage
+        from backend.llm.recording import MeteredLLM
+
+        class TokenLLM(ScriptedLLM):
+            def invoke(self, request):
+                response = super().invoke(request)
+                return GenerationResponse(content=response.content, model="m",
+                                          usage=Usage(input_tokens=1000, output_tokens=100))
+
+        settings = main.get_settings().model_copy(update={
+            "llm_provider": "azure",
+            "azure_price_input_per_1m": prices[0] if prices else None,
+            "azure_price_output_per_1m": prices[1] if prices else None,
+        })
+        monkeypatch.setattr(main, "get_settings", lambda: settings)
+        llm = MeteredLLM(TokenLLM())
+        monkeypatch.setattr(main, "get_llm", lambda: llm)
+        return make_client(llm)[0]
+
+    def test_batch_reports_tokens_and_cost(self, make_client, monkeypatch):
+        client = self._client(make_client, monkeypatch)
+        [article] = client.get("/feed", params={"topic": "tech"}).json()
+        usage = client.post("/analyze", json={"articles": [article]}).json()["usage"]
+        # summarize + detect_bias + synthesize = 3 calls
+        assert (usage["calls"], usage["input_tokens"], usage["output_tokens"]) == (3, 3000, 300)
+        assert usage["cost"] == pytest.approx((3000 * 0.40 + 300 * 1.60) / 1e6)
+        assert usage["currency"] == "USD"
+
+    def test_cached_rerun_costs_only_the_synthesis(self, make_client, monkeypatch):
+        client = self._client(make_client, monkeypatch)
+        [article] = client.get("/feed", params={"topic": "tech"}).json()
+        client.post("/analyze", json={"articles": [article]})
+        usage = client.post("/analyze", json={"articles": [article]}).json()["usage"]
+        assert usage["calls"] == 1  # summary and bias came from the cache
+
+    def test_single_article_usage_and_cache_hit_is_free(self, make_client, monkeypatch):
+        client = self._client(make_client, monkeypatch)
+        [article] = client.get("/feed", params={"topic": "tech"}).json()
+        first = client.post("/analyze/article", json=article).json()["usage"]
+        second = client.post("/analyze/article", json=article).json()["usage"]
+        assert first["calls"] == 2 and second["calls"] == 0 and second["cost"] == 0
+
+    def test_no_prices_means_tokens_only(self, make_client, monkeypatch):
+        client = self._client(make_client, monkeypatch, prices=None)
+        [article] = client.get("/feed", params={"topic": "tech"}).json()
+        usage = client.post("/analyze/article", json=article).json()["usage"]
+        assert usage["input_tokens"] == 2000 and usage["cost"] is None

@@ -25,6 +25,7 @@ Reading five articles about the same event leaves you with five partial pictures
 - **Single-article summarization** — summarize one article on demand from the detail view.
 - **Bias detection** — per-article LLM bias tagging, run in parallel with summarization.
 - **Reader view** — scrape and display full article content in a styled window.
+- **Cost visibility** — every LLM operation shows the tokens it used and its estimated price; the status bar keeps a session total.
 - **Dark theme** — Catppuccin Mocha applied globally.
 
 ---

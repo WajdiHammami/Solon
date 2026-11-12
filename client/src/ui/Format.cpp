@@ -47,6 +47,21 @@ QString Format::longDate(const QString& isoDate){
 }
 
 
+QString Format::tokens(int count){
+    if (count < 1000) return QString::number(count);
+    if (count < 1'000'000) return QString::number(count / 1000.0, 'f', 1) + "k";
+    return QString::number(count / 1'000'000.0, 'f', 2) + "M";
+}
+
+
+QString Format::money(double amount, const QString& currency){
+    const int decimals = amount >= 1.0 ? 2 : 4;
+    const QString value = QString::number(amount, 'f', decimals);
+    if (currency.isEmpty() || currency.compare("USD", Qt::CaseInsensitive) == 0) return "$" + value;
+    return value + " " + currency;
+}
+
+
 void Format::polishMarkdown(QTextDocument* document){
     QTextCursor cursor(document);
     cursor.beginEditBlock();

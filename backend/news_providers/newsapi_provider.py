@@ -35,10 +35,13 @@ class NewsAPIProvider(NewsProvider):
         page: int = 1,
         *,
         sources: list[str] | None = None,
+        domains: list[str] | None = None,
         sort_by: str = "relevancy",
     ) -> list[Article]:
+        """``domains`` restricts results to those sites (e.g. ``["apnews.com"]``)."""
         queries = [query] if isinstance(query, str) else query
         sources_param = ",".join(sources) if sources else ""
+        domains_param = ",".join(domains) if domains else None
 
         articles: list[Article] = []
         for q in queries:
@@ -46,6 +49,7 @@ class NewsAPIProvider(NewsProvider):
                 lambda: self.newsapi.get_everything(
                     q=q,
                     sources=sources_param,
+                    domains=domains_param,
                     language=self.language,
                     sort_by=sort_by,
                     page_size=page_size,

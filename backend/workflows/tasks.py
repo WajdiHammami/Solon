@@ -10,6 +10,7 @@ from backend.llm.errors import LLMInvalidOutputError
 from backend.llm.models import GenerationRequest, Message, Role
 from backend.models import Article, BiasAssessment
 from backend.workflows import prompts
+from backend.workflows.blinding import blind, blind_title
 
 #: Article text beyond this is cut before prompting. Bounds per-call tokens
 #: (~3k) so one very long article can't blow the budget or the rate limit.
@@ -46,11 +47,11 @@ async def detect_bias(llm: LLMClient, article: Article) -> BiasAssessment:
                 Message(role=Role.SYSTEM, content=prompts.BIAS_SYSTEM),
                 Message(
                     role=Role.USER,
+                    # Blinded: no source or URL, outlet name stripped from the text,
+                    # so the model judges the article rather than the outlet.
                     content=prompts.BIAS_ARTICLE.format(
-                        title=article.title,
-                        source=article.source_name,
-                        url=article.url,
-                        content=_content(article),
+                        title=blind_title(article.title, article.source_name, article.url),
+                        content=blind(_content(article), article.source_name, article.url),
                     ),
                 ),
             ],

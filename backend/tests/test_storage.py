@@ -252,3 +252,18 @@ class TestRegisterReportsNewArticles:
         assert await registry.register([a, b, c]) == 1  # only c is new
         assert await registry.register([c, c]) == 0  # duplicates count once
         assert await registry.register([]) == 0
+
+
+class TestBiasLeanPersistence:
+    async def test_lean_and_political_round_trip(self, cache):
+        bias = BiasAssessment(label="Loaded", explanation="e", political=True, lean=-2)
+        await cache.put("u", ArticleAnalysis(summary="s", bias=bias))
+        got = (await cache.get("u")).bias
+        assert (got.political, got.lean) == (True, -2)
+
+    async def test_migration_adds_columns(self, db):
+        async with db.session() as session:
+            columns = await session.run_sync(
+                lambda s: {c["name"] for c in inspect(s.connection()).get_columns("analyses")}
+            )
+        assert {"bias_political", "bias_lean"} <= columns

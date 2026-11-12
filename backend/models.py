@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class Article(BaseModel):
@@ -19,6 +19,17 @@ class Article(BaseModel):
 class BiasAssessment(BaseModel):
     label: str  # short tag, e.g. "Political"; "None" when no bias was found
     explanation: Optional[str] = None
+    # Whether the article is about politics/policy; lean only applies then.
+    political: Optional[bool] = None
+    # US left-right lean, AllSides' 5 categories:
+    # -2 Left, -1 Lean Left, 0 Center, 1 Lean Right, 2 Right.
+    lean: Optional[int] = Field(default=None, ge=-2, le=2)
+
+    @model_validator(mode="after")
+    def _no_lean_without_politics(self) -> "BiasAssessment":
+        if self.political is False:
+            self.lean = None
+        return self
 
 
 class ArticleAnalysis(BaseModel):
@@ -30,6 +41,18 @@ class ArticleAnalysis(BaseModel):
     @property
     def is_complete(self) -> bool:
         return self.summary is not None and self.bias is not None
+
+
+class LLMUsage(BaseModel):
+    """LLM consumption of one operation (cache hits cost nothing)."""
+
+    calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    # Estimated from the configured prices; None when no price is set.
+    cost: Optional[float] = None
+    currency: Optional[str] = None
+    model: Optional[str] = None
 
 
 class TaskFailure(BaseModel):
@@ -47,6 +70,7 @@ class ArticleResult(BaseModel):
     # Where each produced part came from: "summarize" / "detect_bias".
     from_cache: list[str] = []  # reused from the analysis cache (database)
     computed: list[str] = []  # freshly produced by the LLM in this run
+    usage: Optional[LLMUsage] = None  # set by the API for this request
 
 
 class BatchAnalysis(BaseModel):
@@ -56,6 +80,7 @@ class BatchAnalysis(BaseModel):
     failed: list[TaskFailure] = []
     skipped: list[int] = []  # ids dropped by the token budget, never attempted
     estimated_tokens: int = 0
+    usage: Optional[LLMUsage] = None  # actual consumption, set by the API
 
 
 class Source(BaseModel):  # a news/information/articles source
