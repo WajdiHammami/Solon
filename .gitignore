@@ -11,3 +11,5 @@ backend/logs/
 backend/data/
 evaluation/data/
 docs/
+__pycache__/
+*.pyc
